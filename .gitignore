@@ -2,6 +2,7 @@ node_modules
 dist
 dist-cli
 dist-server
+release/
 .env
 *.db
 *.tgz

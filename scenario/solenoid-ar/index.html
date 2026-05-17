@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 物理模型实时交互 — 螺线管电磁场</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+        "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.10/vision_bundle.mjs"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <!-- Layer 0: full-screen camera feed -->
+    <video id="video" autoplay playsinline muted></video>
+
+    <!-- Layer 1: transparent 3D scene overlay -->
+    <canvas id="scene"></canvas>
+
+    <!-- Layer 2: hand landmarks overlay (optional debug) -->
+    <canvas id="handsCanvas"></canvas>
+
+    <!-- Layer 5: HUD -->
+    <header>
+      <h1>AI 物理模型实时交互</h1>
+      <span class="subtitle">螺线管电磁场 · 手部 AR 叠加</span>
+    </header>
+
+    <aside id="panel">
+      <h2>实时状态</h2>
+      <div class="row"><span class="label">手部检测</span><span id="handStatus">未检测</span></div>
+      <div class="row"><span class="label">当前手势</span><span id="gestureName">--</span></div>
+      <div class="row"><span class="label">电流方向</span><span id="currentDir">→ 正向</span></div>
+      <div class="row"><span class="label">电流强度</span><span id="currentMag">1.00</span></div>
+      <div class="row"><span class="label">FPS</span><span id="fps">--</span></div>
+
+      <h3>手势映射</h3>
+      <ul class="legend">
+        <li><b>张开手掌</b> · 模型自动跟随手部位置/朝向</li>
+        <li><b>握拳</b> · 提升电流强度（线圈和场线变亮）</li>
+        <li><b>拇指食指捏合</b> · 反转电流方向（N/S 极互换）</li>
+      </ul>
+
+      <div class="actions">
+        <button id="showLandmarksBtn">显示骨架</button>
+        <button id="flipBtn">反转电流</button>
+      </div>
+      <p class="hint">需要 localhost 或 HTTPS 才能访问摄像头。把手伸到画面中央，5 指张开即可看到螺线管出现在掌心。</p>
+    </aside>
+
+    <div id="status">初始化…</div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

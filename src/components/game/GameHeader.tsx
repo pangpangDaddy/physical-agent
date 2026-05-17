@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Users, Zap, Activity, ScrollText, Maximize2, Minimize2 } from 'lucide-react';
+import { Users, Maximize2, Minimize2, GraduationCap, BookOpen, FlaskConical } from 'lucide-react';
 import { useBadgeCounts } from './hooks/useBadgeCounts';
+import { useStudentStore } from '@/stores/student-store';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type HudPanel = 'team' | 'tasks' | 'status' | 'log';
+export type HudPanel = 'tutor' | 'team' | 'courses' | 'experiments';
 
 interface GameHeaderProps {
   onPanelRequest?: (panel: HudPanel) => void;
@@ -94,6 +95,8 @@ function HudButton({ icon, label, mobileLabel, onClick, active, ariaLabel, badge
 
 export default function GameHeader({ onPanelRequest, gameContainerRef, activePanel, workingCount = 0, staffCount = 0, liveTaskCount = 0 }: GameHeaderProps) {
   const badges = useBadgeCounts();
+  const studentName = useStudentStore((s) => s.name);
+  const totalPoints = useStudentStore((s) => s.totalPoints);
 
   // Fullscreen state + feature detection (iOS Safari lacks fullscreen API)
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -129,56 +132,69 @@ export default function GameHeader({ onPanelRequest, gameContainerRef, activePan
         boxShadow: `inset 0 1px 0 0 ${HEADER.bgLight}`,
       }}
     >
-      {/* Left: gruAI branding */}
-      <div className="flex items-center gap-2">
+      {/* Left: branding + student profile */}
+      <div className="flex items-center gap-3">
         <span
           className="font-mono font-bold text-base tracking-tight"
           style={{ color: HEADER.highlight, textShadow: `0 1px 2px ${HEADER.border}` }}
         >
-          gruAI
+          物理实验室
         </span>
         <span
           className="h-2 w-2 rounded-full bg-emerald-400 inline-block"
           style={{ boxShadow: '0 0 4px #34d399' }}
           aria-label="Connected"
         />
+        {studentName && (
+          <span
+            className="font-mono text-[12px] flex items-center gap-1.5 px-2 py-0.5"
+            style={{
+              backgroundColor: HEADER.buttonBg,
+              color: HEADER.text,
+              borderRadius: '2px',
+              boxShadow: HEADER.buttonBorder,
+            }}
+            title={`已答 ${useStudentStore.getState().quizStats.attempted} 题, 答对 ${useStudentStore.getState().quizStats.correct} 题`}
+          >
+            <span>🎓</span>
+            <span>{studentName}</span>
+            <span style={{ color: HEADER.highlight }}>·</span>
+            <span style={{ color: HEADER.highlight }}>⭐ {totalPoints}</span>
+          </span>
+        )}
       </div>
 
       {/* Right: Game-style buttons */}
       <div className="flex items-center gap-1.5">
         <HudButton
+          icon={<GraduationCap className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
+          label="助教"
+          onClick={() => onPanelRequest?.('tutor')}
+          active={activePanel === 'tutor'}
+          ariaLabel="Physics tutor chat"
+          glow={activePanel !== 'tutor'}
+        />
+        <HudButton
           icon={<Users className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
-          label={`Team ${workingCount}/${staffCount}`}
-          mobileLabel={`${workingCount}/${staffCount}`}
+          label={`同学 ${staffCount}`}
+          mobileLabel={`${staffCount}`}
           onClick={() => onPanelRequest?.('team')}
           active={activePanel === 'team'}
-          ariaLabel="Team overview"
-          badge={badges.team > 0 ? badges.team : undefined}
-          glow={workingCount > 0}
+          ariaLabel="同学列表"
         />
         <HudButton
-          icon={<Zap className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
-          label="Tasks"
-          mobileLabel={liveTaskCount > 0 ? `${liveTaskCount}` : undefined}
-          onClick={() => onPanelRequest?.('tasks')}
-          active={activePanel === 'tasks'}
-          ariaLabel="Tasks and directives"
-          badge={badges.tasks > 0 ? badges.tasks : undefined}
+          icon={<BookOpen className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
+          label="课程"
+          onClick={() => onPanelRequest?.('courses')}
+          active={activePanel === 'courses'}
+          ariaLabel="人教版物理课程"
         />
         <HudButton
-          icon={<Activity className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
-          label="Status"
-          onClick={() => onPanelRequest?.('status')}
-          active={activePanel === 'status'}
-          ariaLabel="System status"
-          badge={badges.status > 0 ? badges.status : undefined}
-        />
-        <HudButton
-          icon={<ScrollText className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
-          label="Log"
-          onClick={() => onPanelRequest?.('log')}
-          active={activePanel === 'log'}
-          ariaLabel="Activity log"
+          icon={<FlaskConical className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
+          label="实验"
+          onClick={() => onPanelRequest?.('experiments')}
+          active={activePanel === 'experiments'}
+          ariaLabel="物理实验小程序"
         />
         {canFullscreen && (
           <HudButton

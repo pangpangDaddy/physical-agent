@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>越野车物理教学模拟</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; font-family: 'Courier New', monospace; overflow: hidden; }
+canvas { display: block; }
+#ui {
+  position: absolute; top: 0; left: 0; width: 100%;
+  display: flex; justify-content: space-between; padding: 12px 20px;
+  pointer-events: none;
+}
+#controls {
+  position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 16px; align-items: center;
+}
+.slider-group { display: flex; flex-direction: column; align-items: center; color: #fff; font-size: 13px; }
+.slider-group input { width: 160px; margin-top: 4px; }
+.slider-group .val { color: #0ff; font-size: 14px; font-weight: bold; margin-top: 2px; }
+#bottom-panel {
+  position: absolute; bottom: 10px; left: 20px;
+  display: flex; flex-direction: column; gap: 8px; width: 240px;
+}
+#scenarios {
+  display: flex; flex-direction: column; gap: 8px;
+}
+.scenario-title { color: #ff0; font-size: 15px; font-weight: bold; text-align: center; }
+.scenario-btn {
+  padding: 8px 14px; font-size: 12px; cursor: pointer; border: 2px solid #555;
+  background: rgba(0,0,0,0.7); color: #fff; border-radius: 8px; text-align: left; line-height: 1.4;
+  transition: all 0.2s;
+}
+.scenario-btn:hover { filter: brightness(1.3); }
+.scenario-btn.active { box-shadow: 0 0 12px rgba(255,255,255,0.3); }
+.scenario-btn span { font-size: 11px; color: #aaa; }
+#btn-downshift, #btn-upshift {
+  padding: 10px 16px; font-size: 13px; cursor: pointer;
+  border: 2px solid #555; background: rgba(0,0,0,0.5); color: #666;
+  border-radius: 8px; font-weight: bold; pointer-events: none; opacity: 0.4;
+}
+#btn-downshift.active, #btn-upshift.active {
+  border-color: #ff0; background: rgba(255,255,0,0.2); color: #ff0;
+  pointer-events: auto; opacity: 1;
+}
+#dashboard {
+  background: rgba(0,0,0,0.7); border: 1px solid #0ff; border-radius: 10px;
+  padding: 14px 20px; color: #fff; font-size: 14px; min-width: 220px;
+}
+#dashboard .row { display: flex; justify-content: space-between; margin: 6px 0; }
+#dashboard .label { color: #aaa; }
+#dashboard .value { color: #0ff; font-weight: bold; font-family: 'Courier New', monospace; }
+#dashboard .title { text-align: center; color: #ff0; font-size: 16px; margin-bottom: 8px; border-bottom: 1px solid #444; padding-bottom: 6px; }
+#formula {
+  position: absolute; top: 12px; left: 20px;
+  background: rgba(0,0,0,0.7); border: 1px solid #ff0; border-radius: 10px;
+  padding: 14px 18px; color: #fff; font-size: 13px; line-height: 1.8;
+}
+#formula .title { color: #ff0; font-size: 15px; margin-bottom: 6px; }
+#formula .eq { color: #0f0; }
+#hint {
+  position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+  color: #888; font-size: 13px; text-align: center;
+}
+#top-right {
+  position: absolute; top: 12px; right: 20px;
+  display: flex; gap: 12px; align-items: flex-start;
+}
+#graph-panel {
+  background: rgba(0,0,0,0.75); border: 1px solid #555; border-radius: 8px;
+  padding: 8px;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="formula">
+  <div class="title">📐 物理公式</div>
+  <div>功率 = 牵引力 × 速度</div>
+  <div class="eq">P = F · v</div>
+  <div style="margin-top:6px">摩擦力 = μ · N = μ · mg·cosθ</div>
+  <div class="eq">f = μmg cosθ &nbsp;(μ=0.1)</div>
+  <div style="margin-top:6px">重力沿坡分量</div>
+  <div class="eq">G∥ = mg sinθ</div>
+  <div style="margin-top:6px; color:#f88">恒功率时: v↑ → F↓</div>
+  <div style="color:#f88">上坡时: G∥阻碍前进</div>
+</div>
+
+<div id="top-right">
+  <div id="dashboard">
+    <div class="title">📊 实时仪表盘</div>
+    <div class="row"><span class="label">速度 v</span><span class="value" id="d-v">0 m/s</span></div>
+    <div class="row"><span class="label">功率 P</span><span class="value" id="d-p">0 kW</span></div>
+    <div class="row"><span class="label">牵引力 F</span><span class="value" id="d-f">0 N</span></div>
+    <div class="row" style="border-top:1px solid #333; padding-top:4px; margin-top:2px"><span class="label" style="color:#e67e22">摩擦力 f</span><span class="value" style="color:#e67e22" id="d-friction">0 N</span></div>
+    <div class="row"><span class="label" style="color:#e74c3c">重力分量 G∥</span><span class="value" style="color:#e74c3c" id="d-gravity">0 N</span></div>
+    <div class="row"><span class="label" style="color:#aaa">坡度</span><span class="value" style="color:#aaa" id="d-slope">0°</span></div>
+    <div class="row" style="border-top:1px solid #444; padding-top:6px; margin-top:4px">
+      <span class="label">状态</span><span class="value" id="d-state">静止</span>
+    </div>
+  </div>
+  <div id="graph-panel">
+    <canvas id="graph" width="230" height="160"></canvas>
+  </div>
+</div>
+
+<div id="bottom-panel">
+  <div id="scenarios">
+    <div class="scenario-title">📚 教学场景</div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="scenario-btn" id="sc1" style="border-color:#e74c3c">
+        <b>场景一：P一定，F与v成反比</b><br>
+        <span>上坡时换低速挡↓v → ↑F</span>
+      </button>
+      <button id="btn-upshift">⬆ 升档</button>
+      <span id="gear-display" style="color:#ff0;font-size:14px;font-weight:bold">1档</span>
+      <button id="btn-downshift">⬇ 降档</button>
+    </div>
+    <button class="scenario-btn" id="sc2" style="border-color:#2ecc71">
+      <b>场景二：v一定，F与P成正比</b><br>
+      <span>上坡时加大油门↑P → ↑F</span>
+    </button>
+    <button class="scenario-btn" id="sc3" style="border-color:#3498db">
+      <b>场景三：F一定，v与P成正比</b><br>
+      <span>平路加大油门↑P → ↑v</span>
+    </button>
+  </div>
+</div>
+
+<button id="btn-reset" style="position:absolute;bottom:10px;right:20px;padding:8px 20px;font-size:14px;cursor:pointer;border:2px solid #f44;background:transparent;color:#f44;border-radius:8px">⟲ 重置</button>
+
+<div id="controls">
+  <div class="slider-group">
+    <span>功率 P</span>
+    <input type="range" id="s-power" min="10000" max="300000" value="50000" step="1000">
+    <span class="val" id="v-power">50 kW</span>
+  </div>
+  <div class="slider-group">
+    <span>速度 v</span>
+    <input type="range" id="s-velocity" min="0.5" max="200" value="10" step="0.5" disabled>
+    <span class="val" id="v-velocity">10 m/s</span>
+  </div>
+  <div class="slider-group">
+    <span>牵引力 F</span>
+    <input type="range" id="s-traction" min="100" max="15000" value="6000" step="100" disabled>
+    <span class="val" id="v-traction">6000 N</span>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const graphCanvas = document.querySelector('#graph-panel canvas');
+const graphCtx = graphCanvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = innerWidth;
+  H = canvas.height = innerHeight;
+}
+resize();
+addEventListener('resize', resize);
+
+// State
+let carX = 200, velocity = 0, throttle = 0, braking = false;
+let cameraX = 0;
+const g = 9.8;
+const speedHistory = [];
+const maxHistory = 230;
+
+// Terrain - flat sections with occasional big hills
+function terrainY(x) {
+  const base = H * 0.65;
+  // Every 2000px cycle: 1400px flat + 600px big hill
+  const cycle = 2000;
+  const pos = ((x % cycle) + cycle) % cycle;
+  if (pos < 1400) return base; // flat road
+  // Smooth hill using sine curve
+  const t = (pos - 1400) / 600;
+  return base - Math.sin(t * Math.PI) * 150;
+}
+
+function terrainSlope(x) {
+  const dx = 2;
+  return (terrainY(x + dx) - terrainY(x - dx)) / (2 * dx);
+}
+
+// Audio - engine sound via Web Audio API
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const engineOsc = audioCtx.createOscillator();
+const engineGain = audioCtx.createGain();
+const engineFilter = audioCtx.createBiquadFilter();
+engineOsc.type = 'sawtooth';
+engineOsc.frequency.value = 40;
+engineFilter.type = 'lowpass';
+engineFilter.frequency.value = 300;
+engineGain.gain.value = 0;
+engineOsc.connect(engineFilter);
+engineFilter.connect(engineGain);
+engineGain.connect(audioCtx.destination);
+engineOsc.start();
+
+// Resume audio on first interaction
+function resumeAudio() {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  removeEventListener('click', resumeAudio);
+}
+addEventListener('click', resumeAudio);
+
+// State control
+let running = false;
+let locked = 'P';
+
+document.getElementById('btn-reset').onclick = resetSim;
+addEventListener('keydown', e => { if (e.code === 'Space') resetSim(); });
+
+function resetSim() {
+  carX = 200; velocity = 0; running = false; gear = 0;
+  speedHistory.length = 0;
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-downshift').classList.remove('active');
+  document.getElementById('btn-upshift').classList.remove('active');
+  updateLabels();
+}
+
+const sPower = document.getElementById('s-power');
+const sVelocity = document.getElementById('s-velocity');
+const sTraction = document.getElementById('s-traction');
+
+function updateLabels() {
+  document.getElementById('v-power').textContent = (+sPower.value / 1000).toFixed(1) + ' kW';
+  document.getElementById('v-velocity').textContent = (+sVelocity.value).toFixed(1) + ' m/s';
+  document.getElementById('v-traction').textContent = (+sTraction.value).toFixed(0) + ' N';
+}
+
+function startScenario(lock, P, v, F) {
+  resetSim();
+  locked = lock;
+  sPower.value = P;
+  sVelocity.value = v;
+  sTraction.value = F;
+  velocity = v;
+  updateLabels();
+  running = true;
+}
+
+// Gear system: 1-5, each gear has a max speed
+let gear = 1;
+const gearMaxV = [0, 8, 15, 25, 38, 50]; // index = gear number
+const btnDown = document.getElementById('btn-downshift');
+const btnUp = document.getElementById('btn-upshift');
+const gearDisp = document.getElementById('gear-display');
+
+function updateGearUI() {
+  gearDisp.textContent = gear + '档';
+  if (velocity > gearMaxV[gear]) velocity = gearMaxV[gear];
+}
+
+// Scene 1: P constant — user can adjust P slider before/during run
+document.getElementById('sc1').onclick = () => {
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sc1').classList.add('active');
+  gear = 1;
+  const P = +sPower.value;
+  startScenario('P', P, 0, P / 0.5);
+  btnDown.classList.add('active');
+  btnUp.classList.add('active');
+  updateGearUI();
+};
+
+btnDown.onclick = () => {
+  if (!running || locked !== 'P' || gear <= 1) return;
+  gear--;
+  updateGearUI();
+};
+
+btnUp.onclick = () => {
+  if (!running || locked !== 'P' || gear >= 5) return;
+  gear++;
+  updateGearUI();
+};
+
+// Scene 2: v constant
+document.getElementById('sc2').onclick = () => {
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sc2').classList.add('active');
+  startScenario('v', 10000, 10, 1000);
+};
+
+// Scene 3: F constant
+document.getElementById('sc3').onclick = () => {
+  document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sc3').classList.add('active');
+  startScenario('F', 50000, 16.7, 3000);
+};
+
+// Power slider always adjustable
+sPower.oninput = () => updateLabels();
+
+updateLabels();
+
+// Draw car
+function drawCar(sx, sy, slope) {
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(Math.atan(slope));
+
+  const wheelR = 12;
+  const wheelY = -wheelR;
+  const rot = (carX * 0.1) % (Math.PI * 2);
+
+  // Car body
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.moveTo(-30, wheelY - 8);
+  ctx.lineTo(30, wheelY - 8);
+  ctx.lineTo(28, wheelY - 22);
+  ctx.lineTo(15, wheelY - 32);
+  ctx.lineTo(-15, wheelY - 30);
+  ctx.lineTo(-28, wheelY - 22);
+  ctx.closePath();
+  ctx.fill();
+
+  // Windshield
+  ctx.fillStyle = '#85c1e9';
+  ctx.beginPath();
+  ctx.moveTo(-8, wheelY - 30);
+  ctx.lineTo(14, wheelY - 30);
+  ctx.lineTo(10, wheelY - 42);
+  ctx.lineTo(-4, wheelY - 42);
+  ctx.closePath();
+  ctx.fill();
+
+  // === Golden Shaded cat driver ===
+  const cx = 3, cy = wheelY - 50;
+
+  // Cat head - golden gradient
+  const headGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 9);
+  headGrad.addColorStop(0, '#fce4a8');   // light gold center
+  headGrad.addColorStop(0.7, '#d4a24c'); // rich gold
+  headGrad.addColorStop(1, '#a67c2e');   // dark gold tips
+  ctx.fillStyle = headGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Ears - dark gold tips (shaded effect)
+  ctx.fillStyle = '#b8862d';
+  ctx.beginPath();
+  ctx.moveTo(cx - 7, cy - 6);
+  ctx.lineTo(cx - 10, cy - 15);
+  ctx.lineTo(cx - 2, cy - 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + 7, cy - 6);
+  ctx.lineTo(cx + 10, cy - 15);
+  ctx.lineTo(cx + 2, cy - 8);
+  ctx.closePath();
+  ctx.fill();
+
+  // Ear tips darker
+  ctx.fillStyle = '#8b6914';
+  ctx.beginPath();
+  ctx.moveTo(cx - 8, cy - 10);
+  ctx.lineTo(cx - 10, cy - 15);
+  ctx.lineTo(cx - 5, cy - 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + 8, cy - 10);
+  ctx.lineTo(cx + 10, cy - 15);
+  ctx.lineTo(cx + 5, cy - 10);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner ears - pink
+  ctx.fillStyle = '#f0b8a0';
+  ctx.beginPath();
+  ctx.moveTo(cx - 6, cy - 7);
+  ctx.lineTo(cx - 8, cy - 12);
+  ctx.lineTo(cx - 3, cy - 8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + 6, cy - 7);
+  ctx.lineTo(cx + 8, cy - 12);
+  ctx.lineTo(cx + 3, cy - 8);
+  ctx.closePath();
+  ctx.fill();
+
+  // Eyes - green (golden shaded signature)
+  ctx.fillStyle = '#2ecc71';
+  ctx.beginPath();
+  ctx.ellipse(cx - 3.5, cy - 1, 2, 2.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(cx + 3.5, cy - 1, 2, 2.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Pupils
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(cx - 3.5, cy - 1, 0.8, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(cx + 3.5, cy - 1, 0.8, 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Eye outline
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.ellipse(cx - 3.5, cy - 1, 2, 2.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(cx + 3.5, cy - 1, 2, 2.5, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Nose - brick pink
+  ctx.fillStyle = '#c0756b';
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + 2);
+  ctx.lineTo(cx - 1.5, cy + 3.5);
+  ctx.lineTo(cx + 1.5, cy + 3.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Mouth
+  ctx.strokeStyle = '#5a3a1a';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + 3.5);
+  ctx.lineTo(cx - 2.5, cy + 5.5);
+  ctx.moveTo(cx, cy + 3.5);
+  ctx.lineTo(cx + 2.5, cy + 5.5);
+  ctx.stroke();
+
+  // Whiskers - lighter
+  ctx.strokeStyle = '#c9a84c';
+  ctx.lineWidth = 0.5;
+  for (const side of [-1, 1]) {
+    for (const dy of [-1, 0, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + side * 5, cy + 3 + dy);
+      ctx.lineTo(cx + side * 14, cy + 1 + dy * 2.5);
+      ctx.stroke();
+    }
+  }
+
+  // Wheels
+  for (const wx of [-22, 22]) {
+    ctx.save();
+    ctx.translate(wx, wheelY);
+    ctx.fillStyle = '#333';
+    ctx.beginPath();
+    ctx.arc(0, 0, wheelR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#666';
+    ctx.beginPath();
+    ctx.arc(0, 0, wheelR - 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    for (let a = 0; a < 4; a++) {
+      const angle = rot + a * Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(angle) * (wheelR - 3), Math.sin(angle) * (wheelR - 3));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Exhaust
+  if (velocity > 0.5) {
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = '#aaa';
+    for (let i = 0; i < 3; i++) {
+      const ex = -35 - i * 12 - Math.random() * 8;
+      const ey = wheelY - 5 + Math.random() * 6;
+      ctx.beginPath();
+      ctx.arc(ex, ey, 4 + i * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+// Draw force arrows
+function drawArrow(sx, sy, dx, label, color) {
+  if (Math.abs(dx) < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(sx + dx, sy);
+  ctx.stroke();
+  // Arrowhead
+  const dir = dx > 0 ? 1 : -1;
+  ctx.beginPath();
+  ctx.moveTo(sx + dx, sy);
+  ctx.lineTo(sx + dx - dir * 10, sy - 6);
+  ctx.lineTo(sx + dx - dir * 10, sy + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.font = '12px Courier New';
+  ctx.fillText(label, sx + dx / 2 - 15, sy - 12);
+  ctx.restore();
+}
+
+// Draw graph
+function drawGraph(v, vMax) {
+  const gw = graphCanvas.width, gh = graphCanvas.height;
+  graphCtx.fillStyle = 'rgba(0,0,0,0.85)';
+  graphCtx.fillRect(0, 0, gw, gh);
+
+  // Title
+  graphCtx.fillStyle = '#aaa';
+  graphCtx.font = '11px Courier New';
+  graphCtx.fillText('速度-时间图 v(t)', 60, 14);
+
+  // Axes
+  graphCtx.strokeStyle = '#555';
+  graphCtx.lineWidth = 1;
+  graphCtx.beginPath();
+  graphCtx.moveTo(25, 20);
+  graphCtx.lineTo(25, gh - 15);
+  graphCtx.lineTo(gw - 5, gh - 15);
+  graphCtx.stroke();
+
+  // vMax line
+  const scale = Math.max(vMax * 1.2, 10);
+  if (vMax > 0) {
+    const yMax = gh - 15 - (vMax / scale) * (gh - 40);
+    graphCtx.strokeStyle = '#f44';
+    graphCtx.setLineDash([4, 4]);
+    graphCtx.beginPath();
+    graphCtx.moveTo(25, yMax);
+    graphCtx.lineTo(gw - 5, yMax);
+    graphCtx.stroke();
+    graphCtx.setLineDash([]);
+    graphCtx.fillStyle = '#f44';
+    graphCtx.fillText('v_max', gw - 45, yMax - 3);
+  }
+
+  // Speed curve
+  if (speedHistory.length > 1) {
+    graphCtx.strokeStyle = '#0ff';
+    graphCtx.lineWidth = 2;
+    graphCtx.beginPath();
+    for (let i = 0; i < speedHistory.length; i++) {
+      const x = 25 + (i / maxHistory) * (gw - 30);
+      const y = gh - 15 - (speedHistory[i] / scale) * (gh - 40);
+      i === 0 ? graphCtx.moveTo(x, y) : graphCtx.lineTo(x, y);
+    }
+    graphCtx.stroke();
+  }
+}
+
+// Background
+function drawBackground() {
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H * 0.65);
+  grad.addColorStop(0, '#0f0c29');
+  grad.addColorStop(0.5, '#302b63');
+  grad.addColorStop(1, '#24243e');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Mountains (parallax)
+  ctx.fillStyle = '#1a1a3e';
+  ctx.beginPath();
+  ctx.moveTo(0, H * 0.5);
+  for (let x = 0; x <= W; x += 3) {
+    const wx = x + cameraX * 0.2;
+    const y = H * 0.45 - Math.sin(wx * 0.003) * 60 - Math.sin(wx * 0.007) * 30;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.fill();
+
+  // Hills
+  ctx.fillStyle = '#252550';
+  ctx.beginPath();
+  ctx.moveTo(0, H * 0.6);
+  for (let x = 0; x <= W; x += 3) {
+    const wx = x + cameraX * 0.5;
+    const y = H * 0.55 - Math.sin(wx * 0.005) * 35 - Math.sin(wx * 0.012) * 15;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(W, H);
+  ctx.lineTo(0, H);
+  ctx.fill();
+}
+
+// Draw terrain
+function drawTerrain() {
+  ctx.fillStyle = '#3d5a3d';
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let sx = -10; sx <= W + 10; sx += 4) {
+    const wx = sx + cameraX;
+    ctx.lineTo(sx, terrainY(wx));
+  }
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fill();
+
+  // Surface detail
+  ctx.strokeStyle = '#4a6a4a';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let sx = -10; sx <= W + 10; sx += 4) {
+    const wx = sx + cameraX;
+    sx === -10 ? ctx.moveTo(sx, terrainY(wx)) : ctx.lineTo(sx, terrainY(wx));
+  }
+  ctx.stroke();
+}
+
+// Distance markers
+function drawMarkers() {
+  ctx.fillStyle = '#888';
+  ctx.font = '11px Courier New';
+  const startM = Math.floor((cameraX) / 200) * 200;
+  for (let wx = startM; wx < cameraX + W; wx += 200) {
+    const sx = wx - cameraX;
+    const sy = terrainY(wx);
+    ctx.fillText((wx / 10).toFixed(0) + 'm', sx - 10, sy + 20);
+    ctx.fillStyle = '#555';
+    ctx.fillRect(sx - 1, sy, 2, 10);
+    ctx.fillStyle = '#888';
+  }
+}
+
+let lastTime = 0;
+function update(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+
+  const m = 1000;
+  const mu = 0.1;
+  const slope = terrainSlope(carX);
+  const angle = Math.atan(-slope);
+
+  const G = m * g;
+  const G_parallel = G * Math.sin(angle);
+  const N = G * Math.cos(angle);
+  const F_friction = velocity > 0.01 ? mu * N : 0;
+
+  // Use slider values
+  const P = +sPower.value;
+  let F_traction = 0;
+
+  if (running) {
+    if (locked === 'P') {
+      // Constant power: F = P/v, physics determines v
+      const maxV = gearMaxV[gear] || 50;
+      F_traction = velocity < 0.5 ? P / 0.5 : P / velocity;
+      F_traction = Math.min(F_traction, 8000);
+      const F_net = F_traction - F_friction - G_parallel;
+      velocity += (F_net / m) * dt;
+      if (velocity < 0) velocity = 0;
+      if (velocity > maxV) velocity = maxV; // gear speed limit
+      sVelocity.value = Math.min(velocity, 50).toFixed(1);
+      sTraction.value = F_traction.toFixed(0);
+    } else if (locked === 'v') {
+      // Constant v: F must equal total resistance, P = F * v
+      velocity = +sVelocity.value;
+      F_traction = F_friction + G_parallel;
+      if (F_traction < 0) F_traction = 0;
+      sTraction.value = F_traction.toFixed(0);
+      sPower.value = (F_traction * velocity).toFixed(0);
+      updateLabels();
+    } else if (locked === 'F') {
+      // Constant F: physics determines v, P = F*v
+      F_traction = +sTraction.value;
+      const F_net = F_traction - F_friction - G_parallel;
+      velocity += (F_net / m) * dt;
+      if (velocity < 0) velocity = 0;
+      sVelocity.value = velocity.toFixed(1);
+      sPower.value = (F_traction * velocity).toFixed(0);
+    }
+    updateLabels();
+  }
+
+  const actualPower = F_traction * velocity;
+
+  // Move car
+  carX += velocity * dt * 10;
+  cameraX = carX - 200;
+
+  // Engine sound
+  const vRatio = velocity > 0 ? Math.min(velocity / 50, 1) : 0;
+  engineOsc.frequency.value = 40 + vRatio * 160;
+  engineFilter.frequency.value = 200 + vRatio * 800;
+  engineGain.gain.value = velocity > 0.5 ? 0.04 + vRatio * 0.08 : 0;
+
+  // Screen position
+  const screenX = carX - cameraX;
+  const groundY = terrainY(carX);
+
+  // Record history
+  if (speedHistory.length >= maxHistory) speedHistory.shift();
+  speedHistory.push(velocity);
+
+  // Draw
+  drawBackground();
+  drawTerrain();
+  drawMarkers();
+  drawCar(screenX, groundY, slope);
+
+  // Force arrows
+  const arrowY = groundY - 55;
+  const fScale = 0.03;
+  if (F_traction > 0) drawArrow(screenX, arrowY, F_traction * fScale, 'F=' + F_traction.toFixed(0) + 'N', '#2ecc71');
+  if (F_friction > 0) drawArrow(screenX, arrowY + 18, -F_friction * fScale, 'f=' + F_friction.toFixed(0) + 'N', '#e67e22');
+  if (Math.abs(G_parallel) > 1) drawArrow(screenX, arrowY + 36, -G_parallel * fScale, 'G∥=' + G_parallel.toFixed(0) + 'N', '#e74c3c');
+
+  // Dashboard
+  document.getElementById('d-v').textContent = velocity.toFixed(2) + ' m/s';
+  document.getElementById('d-p').textContent = (actualPower / 1000).toFixed(1) + ' kW';
+  document.getElementById('d-f').textContent = F_traction.toFixed(1) + ' N';
+  document.getElementById('d-friction').textContent = F_friction.toFixed(1) + ' N';
+  document.getElementById('d-gravity').textContent = G_parallel.toFixed(1) + ' N';
+  document.getElementById('d-slope').textContent = (angle * 180 / Math.PI).toFixed(1) + '°';
+
+  let state = '等待开始';
+  if (!running && velocity < 0.01) state = '等待开始';
+  else if (running && velocity > 0.1) state = '🚀 行驶中';
+  else if (running) state = '🚀 启动中';
+  document.getElementById('d-state').textContent = state;
+
+  drawGraph(velocity, 50);
+
+  requestAnimationFrame(update);
+}
+
+requestAnimationFrame(update);
+</script>
+</body>
+</html>

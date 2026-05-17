@@ -27,7 +27,7 @@ export function CeoDeskPanel() {
     <div className="space-y-3 font-mono">
       <div className="flex items-center gap-2">
         <Crown className="h-4 w-4 text-yellow-600" aria-hidden="true" />
-        <span className="font-bold text-sm" style={{ color: PARCHMENT.text }}>CEO Desk</span>
+        <span className="font-bold text-sm" style={{ color: PARCHMENT.text }}>我的座位</span>
       </div>
 
       <div className="space-y-1.5" style={PIXEL_CARD}>

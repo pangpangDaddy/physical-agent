@@ -29,7 +29,10 @@ export type TileType =
   | 'hud-action'
   | 'hud-status'
   | 'hud-directive'
-  | 'hud-log';
+  | 'hud-log'
+  | 'hud-tutor'
+  | 'hud-courses'
+  | 'hud-experiments';
 
 /** Currently selected item (kept for SidePanel compatibility) */
 export interface SelectedItem {

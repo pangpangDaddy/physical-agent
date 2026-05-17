@@ -30,10 +30,13 @@ export type RoomZoneId =
 // Zone definitions (based on office-layout.ts 30x20 grid — gruai.tmx)
 // ---------------------------------------------------------------------------
 
+// Zone IDs are kept as-is (referenced widely in office-layout/constants/tilesets).
+// Labels are user-facing — they encode the physics-lab semantics. See labs.ts for
+// the full per-lab metadata (icon, tagline, topics, system prompt, scenarios).
 export const ROOM_ZONES: Record<RoomZoneId, RoomZone> = {
   'ceo-office': {
     id: 'ceo-office',
-    label: 'Manager Office',
+    label: '⚙️ 力学实验室',
     bounds: { minCol: 0, maxCol: 7, minRow: 0, maxRow: 11 },
     waypoints: [
       { col: 3, row: 6 },
@@ -41,11 +44,10 @@ export const ROOM_ZONES: Record<RoomZoneId, RoomZone> = {
       { col: 3, row: 9 },
       { col: 5, row: 9 },
     ],
-    restricted: true,
   },
   workspace: {
     id: 'workspace',
-    label: 'Open Workspace',
+    label: '🧲 电磁场实验室',
     bounds: { minCol: 8, maxCol: 22, minRow: 0, maxRow: 11 },
     waypoints: [
       { col: 12, row: 6 },
@@ -57,7 +59,7 @@ export const ROOM_ZONES: Record<RoomZoneId, RoomZone> = {
   },
   meeting: {
     id: 'meeting',
-    label: 'Conference Room',
+    label: '🔭 光学实验室',
     bounds: { minCol: 23, maxCol: 29, minRow: 0, maxRow: 11 },
     waypoints: [
       { col: 25, row: 5 },
@@ -66,11 +68,10 @@ export const ROOM_ZONES: Record<RoomZoneId, RoomZone> = {
       { col: 27, row: 7 },
       { col: 26, row: 9 },
     ],
-    restricted: true,
   },
   kitchen: {
     id: 'kitchen',
-    label: 'Kitchen',
+    label: '🌡️ 热学实验室',
     bounds: { minCol: 0, maxCol: 7, minRow: 12, maxRow: 19 },
     waypoints: [
       { col: 3, row: 14 },
@@ -81,7 +82,7 @@ export const ROOM_ZONES: Record<RoomZoneId, RoomZone> = {
   },
   'break-room': {
     id: 'break-room',
-    label: 'Break Room',
+    label: '☕ 休息区',
     bounds: { minCol: 8, maxCol: 29, minRow: 12, maxRow: 19 },
     waypoints: [
       { col: 12, row: 16 },
@@ -146,41 +147,19 @@ export interface RoutingResult {
  * Choose the appropriate destination zone and waypoint tile based on
  * the agent's current status and session context.
  *
- * Returns null when the agent should stay put (waiting, error at desk).
+ * Physics-edu override: teachers and students stay seated at their lab desks
+ * so the user always sees who is in which lab. Disable all wandering — the
+ * original gruai conductor wandered agents between break-room/kitchen for
+ * ambient flavor, but here it just causes labels to detach from sprites
+ * mid-walk and confuses the "who is in which lab" signal.
  */
 export function chooseDestination(
-  ch: Character,
-  status: AgentStatus,
-  sessionInfo: SessionInfo,
-  seats?: Map<string, Seat>,
+  _ch: Character,
+  _status: AgentStatus,
+  _sessionInfo: SessionInfo,
+  _seats?: Map<string, Seat>,
 ): RoutingResult | null {
-  switch (status) {
-    case 'working': {
-      // Agent tool / subagents => meeting room for discussion
-      if (isAgentTool(sessionInfo.toolName)) {
-        return pickWaypoint('meeting')
-      }
-      // Default working => own desk (handled externally via sendToSeat)
-      return null
-    }
-
-    case 'idle': {
-      // Idle — wander around (break room, kitchen, ceo-office if allowed)
-      const allZones: RoomZoneId[] = ['break-room', 'kitchen', 'ceo-office']
-      const zones = seats
-        ? allZones.filter((z) => isAgentAllowedInZone(ch, z, seats))
-        : allZones.filter((z) => !ROOM_ZONES[z].restricted)
-      if (zones.length === 0) return null
-      return pickWaypoint(zones[Math.floor(Math.random() * zones.length)])
-    }
-
-    case 'offline':
-      // Offline agents go to desk (stay seated like idle) — handled externally
-      return null
-
-    default:
-      return null
-  }
+  return null
 }
 
 /**

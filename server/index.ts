@@ -1,8 +1,12 @@
+import 'dotenv/config';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
 import { loadConfig } from './config.js';
+import { handleChat, handleChatHealth } from './routes/chat.js';
+import { handleCoursesList, handleCourseFile, handleExperimentsList } from './routes/content.js';
+import { handleScenarioStatic } from './routes/scenarios.js';
 import { getDb, closeDb } from './db.js';
 import { Aggregator } from './state/aggregator.js';
 import { ClaudeCodeAdapter } from './platform/claude-code.js';
@@ -144,12 +148,42 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- Physics tutor chat routes ---
+  if (url.pathname === '/api/chat' && req.method === 'POST') {
+    void handleChat(req, res);
+    return;
+  }
+
+  if (url.pathname === '/api/chat/health' && req.method === 'GET') {
+    handleChatHealth(res);
+    return;
+  }
+
+  // --- Curriculum & experiments content ---
+  if (url.pathname === '/api/courses' && req.method === 'GET') {
+    handleCoursesList(res);
+    return;
+  }
+
+  if (url.pathname === '/api/courses/file' && req.method === 'GET') {
+    handleCourseFile(url, res);
+    return;
+  }
+
+  if (url.pathname === '/api/experiments' && req.method === 'GET') {
+    handleExperimentsList(res);
+    return;
+  }
+
   // Unknown /api/* routes → 404 JSON (don't fall through to SPA)
   if (url.pathname.startsWith('/api/')) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
     return;
   }
+
+  // --- Scenario games (HTML/JS bundles served from scenario/) ---
+  if (handleScenarioStatic(url, res)) return;
 
   // --- Static file serving for production ---
   // Resolve dist/ from the package installation directory (not CWD)

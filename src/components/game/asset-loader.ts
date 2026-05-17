@@ -110,8 +110,10 @@ const TILE = 32
  * Appearances are indexed by palette number — appearances[0] = palette 0, etc.
  */
 export async function loadCharacterAssets(appearances: CharacterAppearance[]): Promise<void> {
+  // First try MetroCity runtime compositing (requires licensed sheets at /assets/metrocity/).
+  // Fall back to legacy pre-composited `/assets/characters/char_<N>.png` if MetroCity assets
+  // aren't on disk — those 13 PNGs are CC0 and ship in this repo.
   try {
-    // Load MetroCity source sheets
     const [bodySheet, hairSheet, ...outfitSheets] = await Promise.all([
       loadImage('/assets/metrocity/Character Model.png'),
       loadImage('/assets/metrocity/Hairs.png'),
@@ -123,43 +125,69 @@ export async function loadCharacterAssets(appearances: CharacterAppearance[]): P
       loadImage('/assets/metrocity/Outfit6.png'),
     ])
 
-    // Shared compositing canvas
     const comp = document.createElement('canvas')
     comp.width = TILE
     comp.height = TILE
     const compCtx = comp.getContext('2d')!
 
     const characters: LoadedCharacterData[] = []
-
     for (const appearance of appearances) {
       const outfitSheet = outfitSheets[appearance.outfitIndex - 1]
       const dirs: Record<string, SpriteData[]> = { down: [], up: [], right: [] }
-
       for (const dir of OUTPUT_DIRS) {
         const dirColBase = DIR_COL_OFFSET[dir]
-
         for (const srcFrame of FRAME_MAP) {
           const col = dirColBase + srcFrame
-
-          // Composite: body → outfit → hair (canvas alpha blending)
           compCtx.clearRect(0, 0, TILE, TILE)
           compCtx.drawImage(bodySheet, col * TILE, appearance.bodyRow * TILE, TILE, TILE, 0, 0, TILE, TILE)
           compCtx.drawImage(outfitSheet, col * TILE, 0, TILE, TILE, 0, 0, TILE, TILE)
           compCtx.drawImage(hairSheet, col * TILE, appearance.hairRow * TILE, TILE, TILE, 0, 0, TILE, TILE)
-
-          // Extract SpriteData from composited result
           const imageData = compCtx.getImageData(0, 0, TILE, TILE)
           dirs[dir].push(extractSprite(imageData.data, TILE, 0, 0, TILE, TILE))
         }
       }
-
       characters.push({ down: dirs.down, up: dirs.up, right: dirs.right })
     }
 
     setCharacterTemplates(characters)
     console.log(`✓ Composited ${characters.length} character sprites from MetroCity sheets`)
+    return
   } catch (e) {
-    console.warn('Failed to load MetroCity character sheets:', e)
+    console.info('MetroCity sheets unavailable; using bundled char_*.png fallback.', e)
+  }
+
+  // ── Fallback: load /assets/characters/char_<N>.png (13 CC0 pre-composited variants) ──
+  try {
+    const LEGACY_FRAME_W = 16
+    const LEGACY_FRAME_H = 32
+    const LEGACY_FRAMES = 7 // 0-2 walk, 3-4 type, 5-6 read
+    const LEGACY_COUNT = 13
+
+    const characters: LoadedCharacterData[] = []
+    for (let i = 0; i < LEGACY_COUNT; i++) {
+      const img = await loadImage(`/assets/characters/char_${i}.png`)
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
+      const imageData = ctx.getImageData(0, 0, img.width, img.height)
+      const data = imageData.data
+
+      const dirs: SpriteData[][] = [[], [], []] // down, up, right
+      for (let dir = 0; dir < 3; dir++) {
+        for (let frame = 0; frame < LEGACY_FRAMES; frame++) {
+          dirs[dir].push(
+            extractSprite(data, img.width, frame * LEGACY_FRAME_W, dir * LEGACY_FRAME_H, LEGACY_FRAME_W, LEGACY_FRAME_H),
+          )
+        }
+      }
+      characters.push({ down: dirs[0], up: dirs[1], right: dirs[2] })
+    }
+    setCharacterTemplates(characters)
+    console.log(`✓ Loaded ${characters.length} legacy char_*.png character sprites`)
+  } catch (e) {
+    console.warn('Failed to load legacy character sprites:', e)
   }
 }
 

@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { X, Users, Zap, Activity, ScrollText } from 'lucide-react';
+import { X, GraduationCap, Users, BookOpen, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -11,9 +11,9 @@ import { type AgentStatus, type SelectedItem } from './types';
 import { useBadgeCounts, type BadgeCounts } from './hooks/useBadgeCounts';
 import {
   TeamPanel,
-  ActionPanel,
-  StatusPanel,
-  LogPanel,
+  TutorPanel,
+  CoursesPanel,
+  ExperimentsPanel,
   AgentPanel,
   CeoDeskPanel,
   WhiteboardPanel,
@@ -23,6 +23,8 @@ import {
   BookshelfPanel,
   PARCHMENT,
 } from './panels';
+import type { RoomZoneId } from './engine/roomZones';
+import { PHYSICS_LABS } from './engine/labs';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,38 +42,40 @@ interface SidePanelProps {
   drawerWidth?: number;
   /** Callback when the user drags the resize handle */
   onDrawerWidthChange?: (width: number) => void;
+  /** Currently active physics lab zone — drives Tutor system prompt */
+  activeLabZone?: RoomZoneId;
+  /** Called when user clicks "进入实验" on a scenario card */
+  onLaunchScenario?: (scenarioId: string) => void;
 }
 
-type HudTab = 'team' | 'tasks' | 'status' | 'log';
+type HudTab = 'tutor' | 'team' | 'courses' | 'experiments';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const HUD_TYPES = new Set(['hud-team', 'hud-tasks', 'hud-status', 'hud-log']);
+const HUD_TYPES = new Set(['hud-tutor', 'hud-team', 'hud-courses', 'hud-experiments']);
 
 const TAB_ICONS: Record<HudTab, React.ReactNode> = {
+  tutor: <GraduationCap className="h-3 w-3" />,
   team: <Users className="h-3 w-3" />,
-  tasks: <Zap className="h-3 w-3" />,
-  status: <Activity className="h-3 w-3" />,
-  log: <ScrollText className="h-3 w-3" />,
+  courses: <BookOpen className="h-3 w-3" />,
+  experiments: <FlaskConical className="h-3 w-3" />,
 };
 
 const TAB_LIST: { id: HudTab; label: string }[] = [
-  { id: 'team', label: 'Team' },
-  { id: 'tasks', label: 'Tasks' },
-  { id: 'status', label: 'Status' },
-  { id: 'log', label: 'Log' },
+  { id: 'tutor', label: '助教' },
+  { id: 'team', label: '同学' },
+  { id: 'courses', label: '课程' },
+  { id: 'experiments', label: '实验' },
 ];
 
 function hudTypeToTab(type: string): HudTab | null {
   switch (type) {
+    case 'hud-tutor': return 'tutor';
     case 'hud-team': return 'team';
-    case 'hud-tasks': return 'tasks';
-    case 'hud-action': return 'tasks'; // backward compat
-    case 'hud-directive': return 'tasks'; // merged into tasks
-    case 'hud-status': return 'status';
-    case 'hud-log': return 'log';
+    case 'hud-courses': return 'courses';
+    case 'hud-experiments': return 'experiments';
     default: return null;
   }
 }
@@ -80,23 +84,27 @@ function hudTypeToTab(type: string): HudTab | null {
 // Panel title
 // ---------------------------------------------------------------------------
 
-function panelTitle(selected: SelectedItem | null, activeTab: HudTab | null): string {
-  // If showing a HUD tab, use the tab name
+function panelTitle(selected: SelectedItem | null, activeTab: HudTab | null, activeLabZone?: RoomZoneId): string {
+  // If showing a HUD tab, use the tab name (Tutor uses the active lab name)
+  if (activeTab === 'tutor' && activeLabZone) {
+    const lab = PHYSICS_LABS[activeLabZone];
+    return `${lab.icon} ${lab.name}`;
+  }
   if (activeTab) {
     const tab = TAB_LIST.find((t) => t.id === activeTab);
     return tab?.label ?? 'Office';
   }
   if (!selected) return 'Office Overview';
   switch (selected.type) {
-    case 'desk':          return selected.agentName ?? 'Agent Desk';
-    case 'ceo-desk':      return 'CEO Desk';
-    case 'conference':    return 'Conference Room';
-    case 'whiteboard':    return 'Whiteboard';
-    case 'mailbox':       return 'Mailbox';
-    case 'bell':          return 'Scout Bell';
-    case 'bookshelf':     return 'Knowledge Base';
-    case 'door':          return 'Entrance';
-    default:              return 'Office';
+    case 'desk':          return selected.agentName ?? '同学的座位';
+    case 'ceo-desk':      return '我的座位';
+    case 'conference':    return '光学实验室';
+    case 'whiteboard':    return '黑板';
+    case 'mailbox':       return '信箱';
+    case 'bell':          return '上课铃';
+    case 'bookshelf':     return '书架';
+    case 'door':          return '教室门口';
+    default:              return '物理实验室';
   }
 }
 
@@ -185,12 +193,16 @@ function PanelContent({
   activeTab,
   agentOverride,
   onSelectAgent,
+  activeLabZone,
+  onLaunchScenario,
 }: {
   selected: SelectedItem | null;
   agentStatuses: Record<string, AgentStatus>;
   activeTab: HudTab | null;
   agentOverride: string | null;
   onSelectAgent: (name: string) => void;
+  activeLabZone?: RoomZoneId;
+  onLaunchScenario?: (scenarioId: string) => void;
 }) {
   // If an agent was selected from team panel, show agent detail
   if (agentOverride) {
@@ -200,14 +212,14 @@ function PanelContent({
   // If a tab is active, render the tab panel
   if (activeTab) {
     switch (activeTab) {
+      case 'tutor':
+        return <TutorPanel activeZone={activeLabZone} onLaunchScenario={onLaunchScenario} />;
       case 'team':
         return <TeamPanel agentStatuses={agentStatuses} onSelectAgent={onSelectAgent} />;
-      case 'tasks':
-        return <ActionPanel />;
-      case 'status':
-        return <StatusPanel />;
-      case 'log':
-        return <LogPanel />;
+      case 'courses':
+        return <CoursesPanel />;
+      case 'experiments':
+        return <ExperimentsPanel onLaunchScenario={onLaunchScenario} />;
     }
   }
 
@@ -244,6 +256,8 @@ export default function SidePanel({
   isOpen = true,
   drawerWidth = 320,
   onDrawerWidthChange,
+  activeLabZone,
+  onLaunchScenario,
 }: SidePanelProps) {
   // Badge counts for tab notifications
   const badges = useBadgeCounts();
@@ -285,7 +299,11 @@ export default function SidePanel({
 
   const title = agentOverride
     ? agentOverride
-    : panelTitle(selected, activeTab);
+    : panelTitle(selected, activeTab, activeLabZone);
+
+  // Tutor needs its own full-height layout (textarea + scroll managed internally).
+  // Bypass the ScrollArea + padded wrapper used for the other HUD panels.
+  const isTutorActive = isHudMode && activeTab === 'tutor' && !agentOverride;
 
   // Parchment panel styles
   const panelStyle = {
@@ -423,26 +441,42 @@ export default function SidePanel({
           )}
         </div>
 
-        {/* Content — with subtle inner frame */}
-        <ScrollArea className="flex-1">
-          <div
-            className="p-3"
-            style={{
-              margin: '6px',
-              borderRadius: '2px',
-              boxShadow: 'inset 1px 1px 0 0 #C4A26540, inset -1px -1px 0 0 #F5ECD740',
-              backgroundColor: '#F0E4C8',
-            }}
-          >
+        {/* Content — tutor manages its own scroll; others get scroll wrapper */}
+        {isTutorActive ? (
+          <div className="flex-1 min-h-0" style={{ backgroundColor: '#F0E4C8' }}>
             <PanelContent
               selected={selected}
               agentStatuses={agentStatuses}
-              activeTab={isHudMode ? activeTab : null}
+              activeTab={activeTab}
               agentOverride={agentOverride}
               onSelectAgent={handleSelectAgent}
+              activeLabZone={activeLabZone}
+              onLaunchScenario={onLaunchScenario}
             />
           </div>
-        </ScrollArea>
+        ) : (
+          <ScrollArea className="flex-1">
+            <div
+              className="p-3"
+              style={{
+                margin: '6px',
+                borderRadius: '2px',
+                boxShadow: 'inset 1px 1px 0 0 #C4A26540, inset -1px -1px 0 0 #F5ECD740',
+                backgroundColor: '#F0E4C8',
+              }}
+            >
+              <PanelContent
+                selected={selected}
+                agentStatuses={agentStatuses}
+                activeTab={isHudMode ? activeTab : null}
+                agentOverride={agentOverride}
+                onSelectAgent={handleSelectAgent}
+                activeLabZone={activeLabZone}
+                onLaunchScenario={onLaunchScenario}
+              />
+            </div>
+          </ScrollArea>
+        )}
       </aside>
     );
   }
@@ -490,26 +524,42 @@ export default function SidePanel({
         </button>
       </div>
 
-      {/* Content — independently scrollable, with subtle inner frame */}
-      <ScrollArea className="flex-1 min-h-0">
-        <div
-          className="p-3"
-          style={{
-            margin: '6px',
-            borderRadius: '2px',
-            boxShadow: 'inset 1px 1px 0 0 #C4A26540, inset -1px -1px 0 0 #F5ECD740',
-            backgroundColor: '#F0E4C8',
-          }}
-        >
+      {/* Content — tutor manages its own scroll */}
+      {isTutorActive ? (
+        <div className="flex-1 min-h-0" style={{ backgroundColor: '#F0E4C8' }}>
           <PanelContent
             selected={selected}
             agentStatuses={agentStatuses}
-            activeTab={isHudMode ? activeTab : null}
+            activeTab={activeTab}
             agentOverride={agentOverride}
             onSelectAgent={handleSelectAgent}
+            activeLabZone={activeLabZone}
+            onLaunchScenario={onLaunchScenario}
           />
         </div>
-      </ScrollArea>
+      ) : (
+        <ScrollArea className="flex-1 min-h-0">
+          <div
+            className="p-3"
+            style={{
+              margin: '6px',
+              borderRadius: '2px',
+              boxShadow: 'inset 1px 1px 0 0 #C4A26540, inset -1px -1px 0 0 #F5ECD740',
+              backgroundColor: '#F0E4C8',
+            }}
+          >
+            <PanelContent
+              selected={selected}
+              agentStatuses={agentStatuses}
+              activeTab={isHudMode ? activeTab : null}
+              agentOverride={agentOverride}
+              onSelectAgent={handleSelectAgent}
+              activeLabZone={activeLabZone}
+              onLaunchScenario={onLaunchScenario}
+            />
+          </div>
+        </ScrollArea>
+      )}
     </section>
   );
 }

@@ -11,6 +11,10 @@ import type { Session } from '@/stores/types';
 import { getZoneAt } from './engine/roomZones';
 import { useOfficeAgents } from './useOfficeAgents';
 import { useAgentRegistryStore } from '@/stores/agent-registry-store';
+import type { RoomZoneId } from './engine/roomZones';
+import { PHYSICS_LABS } from './engine/labs';
+import StudentOnboarding from './StudentOnboarding';
+import { useStudentStore } from '@/stores/student-store';
 
 /** Capitalize first letter — agent names in project.json are lowercase ("riley") */
 function capitalize(s: string): string {
@@ -78,10 +82,13 @@ function extractTaskName(prompt?: string | null): string | undefined {
 // corresponding HUD tab instead of the furniture-specific panel.
 // ---------------------------------------------------------------------------
 
+// Physics-edu: clicking any room furniture opens the Tutor for that lab.
+// The activeLabZone state separately tracks which lab the tutor is teaching.
 const FURNITURE_TAB_MAP: Partial<Record<TileType, HudPanel>> = {
-  'ceo-desk':    'tasks',      // CEO desk -> Tasks tab
-  'whiteboard':  'tasks',      // Whiteboard -> Tasks tab (directives merged in)
-  'conference':  'status',     // Conference room -> Status tab (company overview)
+  'ceo-desk':    'tutor',
+  'whiteboard':  'tutor',
+  'conference':  'tutor',
+  'bookshelf':   'tutor',
 };
 
 // ---------------------------------------------------------------------------
@@ -143,10 +150,13 @@ export default function GamePage() {
 
   const sessions = useDashboardStore((s) => s.sessions);
   const sessionActivities = useDashboardStore((s) => s.sessionActivities);
-  const [selected, setSelected] = useState<SelectedItem | null>(null);
+  // Default to Tutor panel open in the lounge — students see the chat immediately.
+  const [selected, setSelected] = useState<SelectedItem | null>({ type: 'hud-tutor', position: { row: 0, col: 0 } });
+  const [activeLabZone, setActiveLabZone] = useState<RoomZoneId>('break-room');
+  const [pendingScenario, setPendingScenario] = useState<{ slug: string; title: string } | null>(null);
   const isMobile = useIsMobile();
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [drawerWidth, setDrawerWidth] = useState(400);
+  const [sheetOpen, setSheetOpen] = useState(true);
+  const [drawerWidth, setDrawerWidth] = useState(440);
 
   // Derive agent interactions from directive pipeline state
   // Uses semantic relationships (builder↔reviewer, planners in meeting) instead of session parent/child
@@ -487,10 +497,10 @@ export default function GamePage() {
     if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; }
 
     const typeMap: Record<HudPanel, TileType> = {
+      tutor: 'hud-tutor',
       team: 'hud-team',
-      tasks: 'hud-tasks',
-      status: 'hud-status',
-      log: 'hud-log',
+      courses: 'hud-courses',
+      experiments: 'hud-experiments',
     };
     // Toggle: if same panel already open, close it
     if (selected?.type === typeMap[panel]) {
@@ -500,6 +510,16 @@ export default function GamePage() {
     setSelected({ type: typeMap[panel], position: { row: 0, col: 0 } });
     setSheetOpen(true);
   }, [selected, handleClose]);
+
+  // Launch a scenario game in the modal iframe. Wired down through SidePanel → TutorPanel.
+  const handleLaunchScenario = useCallback((scenarioId: string) => {
+    let title = scenarioId;
+    for (const lab of Object.values(PHYSICS_LABS)) {
+      const found = lab.scenarios.find((s) => s.id === scenarioId);
+      if (found) { title = found.title; break; }
+    }
+    setPendingScenario({ slug: scenarioId, title });
+  }, []);
 
   // Handle furniture/desk click from canvas
   const handleItemClick = useCallback((item: ClickedItem | null) => {
@@ -522,11 +542,16 @@ export default function GamePage() {
 
     let tileType = typeMap[item.type];
 
+    // Track which physics lab was clicked — drives Tutor's system prompt + scenarios.
+    const clickedZone = getZoneAt(item.col, item.row);
+    if (clickedZone) {
+      setActiveLabZone(clickedZone);
+    }
+
     // Route generic 'furniture' clicks by room zone for richer panels
     if (item.type === 'furniture') {
-      const zone = getZoneAt(item.col, item.row);
-      if (zone === 'ceo-office') tileType = 'ceo-desk';
-      else if (zone === 'meeting') tileType = 'conference';
+      if (clickedZone === 'ceo-office') tileType = 'ceo-desk';
+      else if (clickedZone === 'meeting') tileType = 'conference';
     }
 
     // If this furniture type maps to a HUD tab, open that tab instead
@@ -548,12 +573,10 @@ export default function GamePage() {
   const activePanel = useMemo<HudPanel | null>(() => {
     if (!selected) return null;
     switch (selected.type) {
-      case 'hud-team': return 'team';
-      case 'hud-tasks': return 'tasks';
-      case 'hud-action': return 'tasks'; // backward compat
-      case 'hud-directive': return 'tasks'; // merged
-      case 'hud-status': return 'status';
-      case 'hud-log': return 'log';
+      case 'hud-tutor':       return 'tutor';
+      case 'hud-team':        return 'team';
+      case 'hud-courses':     return 'courses';
+      case 'hud-experiments': return 'experiments';
       default: return null;
     }
   }, [selected]);
@@ -570,6 +593,7 @@ export default function GamePage() {
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
+      <StudentOnboarding />
       <GameHeader
         onPanelRequest={handlePanelRequest}
         gameContainerRef={gameContainerRef}
@@ -618,6 +642,8 @@ export default function GamePage() {
                 agentStatuses={agentStatuses}
                 onClose={handleClose}
                 variant="inline"
+                activeLabZone={activeLabZone}
+                onLaunchScenario={handleLaunchScenario}
               />
             )}
           </div>
@@ -651,7 +677,45 @@ export default function GamePage() {
             isOpen={sheetOpen && !!selected}
             drawerWidth={drawerWidth}
             onDrawerWidthChange={setDrawerWidth}
+            activeLabZone={activeLabZone}
+            onLaunchScenario={handleLaunchScenario}
           />
+        </div>
+      )}
+
+      {/* Scenario modal — opened by TutorPanel "🧪" buttons */}
+      {pendingScenario && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+          onClick={() => setPendingScenario(null)}
+        >
+          <div
+            className="bg-black rounded-md overflow-hidden"
+            style={{ width: 'min(92vw, 1080px)', height: 'min(88vh, 720px)', boxShadow: '0 10px 40px rgba(0,0,0,0.6)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-2 text-sm font-mono"
+              style={{ backgroundColor: '#5C3D2E', color: '#F5ECD7' }}
+            >
+              <span>🧪 {pendingScenario.title}</span>
+              <button
+                type="button"
+                onClick={() => setPendingScenario(null)}
+                className="px-2 hover:bg-white/10 rounded"
+              >
+                ✕ 关闭
+              </button>
+            </div>
+            <iframe
+              title={pendingScenario.title}
+              src={`/scenarios/${pendingScenario.slug}/`}
+              allow="camera *; microphone *; xr-spatial-tracking *; accelerometer; gyroscope"
+              style={{ width: '100%', height: 'calc(100% - 36px)', border: 0, background: '#000' }}
+            />
+          </div>
         </div>
       )}
 

@@ -1,0 +1,39 @@
+# .understandignore — patterns for files/dirs to exclude from analysis
+# Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
+#
+# Built-in defaults (always excluded unless negated):
+#   node_modules/, .git/, dist/, build/, obj/, *.lock, *.min.js, etc.
+
+# --- Runtime state of the gruAI framework (not source code) ---
+.context/
+logs/
+scenario/
+
+# --- Configuration / agent definitions (data files, hundreds of them) ---
+.claude/
+
+# --- Tests & fixtures ---
+tests/fixture/
+tests/e2e/
+*.test.*
+*.spec.*
+
+# --- Assets and binary content ---
+public/assets/
+docs/assets/
+*.tmx
+*.tsx-tiled
+*.tiled-project
+*.tiled-session
+
+# --- Scaffolding templates (copied verbatim into user repos, not real source) ---
+cli/templates/
+
+# --- Build output ---
+dist-cli/
+dist-server/
+
+# --- Misc ---
+.DS_Store
+*.db
+*.tgz

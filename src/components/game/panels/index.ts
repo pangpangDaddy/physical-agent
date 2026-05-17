@@ -1,5 +1,8 @@
 // Barrel export for game panels
 export { default as TeamPanel } from './TeamPanel';
+export { default as TutorPanel } from './TutorPanel';
+export { default as CoursesPanel } from './CoursesPanel';
+export { default as ExperimentsPanel } from './ExperimentsPanel';
 export { default as ActionPanel } from './ActionPanel';
 export { default as StatusPanel } from './StatusPanel';
 export { default as DirectivePanel } from './DirectivePanel';
