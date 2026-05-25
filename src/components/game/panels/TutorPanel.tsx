@@ -83,6 +83,26 @@ function extractMarkers(content: string): { display: string; points: number; mas
 }
 
 const STORAGE_PREFIX = 'tutor-chat::';
+const MODEL_STORAGE_KEY = 'tutor-model';
+
+/** Available models for the tutor chat. First entry is the default. */
+const TUTOR_MODELS = [
+  { id: 'qwen3.6-plus', label: 'Qwen3.6 Plus' },
+  { id: 'qwen3.6-flash', label: 'Qwen3.6 Flash' },
+  { id: 'qwen3.5-plus', label: 'Qwen3.5 Plus' },
+  { id: 'qwen3.5-flash', label: 'Qwen3.5 Flash' },
+  { id: 'qwen3-vl-plus', label: 'Qwen3-VL Plus' },
+  { id: 'qwen-max', label: 'Qwen Max' },
+  { id: 'qwen-flash', label: 'Qwen Flash' },
+] as const;
+
+function loadModel(): string {
+  try {
+    const saved = localStorage.getItem(MODEL_STORAGE_KEY);
+    if (saved && TUTOR_MODELS.some((m) => m.id === saved)) return saved;
+  } catch { /* ignore */ }
+  return TUTOR_MODELS[0].id;
+}
 
 function loadHistory(labSlug: string): Message[] {
   try {
@@ -147,6 +167,7 @@ ${next.length === 0 ? '所有知识点都已掌握，可以考查综合题或拓
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [model, setModel] = useState<string>(loadModel);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -193,6 +214,7 @@ ${next.length === 0 ? '所有知识点都已掌握，可以考查综合题或拓
         body: JSON.stringify({
           messages: history,
           system: `${studentLine}${lab.systemPrompt}${curriculumContext}${TUTOR_PROTOCOL}`,
+          model,
           maxTokens: 2048,
         }),
       });
@@ -263,7 +285,7 @@ ${next.length === 0 ? '所有知识点都已掌握，可以考查综合题或拓
       setSending(false);
       abortRef.current = null;
     }
-  }, [sending, messages, lab.systemPrompt, lab.slug, studentName, recordQuiz, markTopicMastered, curriculumContext]);
+  }, [sending, messages, lab.systemPrompt, lab.slug, studentName, recordQuiz, markTopicMastered, curriculumContext, model]);
 
   const send = useCallback(() => {
     const text = input.trim();
@@ -450,9 +472,26 @@ ${next.length === 0 ? '所有知识点都已掌握，可以考查综合题或拓
             <Button type="button" size="sm" onClick={() => void send()} disabled={!input.trim()}>发送</Button>
           )}
           <Button type="button" variant="ghost" size="sm" onClick={clear} title="清空当前实验室对话">🗑</Button>
-          <span className="text-[10px] font-mono ml-auto" style={{ color: PARCHMENT.textDim }}>
-            qwen3-coder-plus
-          </span>
+          <select
+            value={model}
+            onChange={(e) => {
+              const v = e.target.value;
+              setModel(v);
+              try { localStorage.setItem(MODEL_STORAGE_KEY, v); } catch { /* ignore */ }
+            }}
+            className="text-[10px] font-mono ml-auto px-1 py-0.5 focus:outline-none cursor-pointer"
+            style={{
+              color: PARCHMENT.textDim,
+              backgroundColor: 'transparent',
+              border: `1px solid ${PARCHMENT.border}`,
+              borderRadius: '2px',
+            }}
+            title="选择对话模型"
+          >
+            {TUTOR_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
         </div>
       </div>
     </div>
