@@ -38,6 +38,12 @@ export class HandTracker {
   }
 
   async startCamera() {
+    if (!navigator.mediaDevices) {
+      throw new Error(
+        '当前浏览器不支持摄像头访问（需通过 HTTPS 或 localhost 访问）。'
+        + '如果通过公网 IP 访问，请先配置 HTTPS 证书。'
+      );
+    }
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { width: 640, height: 480, facingMode: 'user' },
       audio: false,

@@ -69,7 +69,7 @@ async function bootstrap() {
     setStatus('运行中 · 把手伸到画面里', 'ok');
   } catch (err) {
     console.error(err);
-    setStatus(`初始化失败：${err.message || err}（请通过 localhost/HTTPS 访问并允许摄像头）`, 'error');
+    setStatus(`初始化失败：${err.message || err}`, 'error');
   }
   startLoop();
 }

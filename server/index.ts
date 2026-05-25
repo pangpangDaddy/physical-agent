@@ -23,6 +23,12 @@ import type { WsMessage, WsMessageType, SendInputRequest } from './types.js';
 const config = loadConfig();
 const PORT = config.server.port;
 
+// --- Deployment mode: skip local-only features on ECS ---
+const isDeployed = process.env.GRUAI_DEPLOYED === 'true';
+if (isDeployed) {
+  console.log('[deploy] Running in deployed mode — local-only features disabled');
+}
+
 // Initialize DB (creates table if needed)
 getDb();
 
@@ -50,15 +56,21 @@ notifier.on('notification_fired', (payload: { sessionId: string; suppressBrowser
   }
 });
 
-// Start file watchers (created via adapter factory methods)
-const sessionWatcher = adapter.createSessionWatcher(aggregator, aggregator.projectFilter);
-sessionWatcher.start();
+// Start file watchers — skipped in deployed mode
+let sessionWatcher: ReturnType<typeof adapter.createSessionWatcher> | undefined;
+let directiveWatcher: DirectiveWatcher | undefined;
+let stateWatcher: StateWatcher | undefined;
 
-const directiveWatcher = new DirectiveWatcher(aggregator, config.claudeHome);
-directiveWatcher.start();
+if (!isDeployed) {
+  sessionWatcher = adapter.createSessionWatcher(aggregator, aggregator.projectFilter);
+  sessionWatcher.start();
 
-const stateWatcher = new StateWatcher(aggregator, config);
-stateWatcher.start();
+  directiveWatcher = new DirectiveWatcher(aggregator, config.claudeHome);
+  directiveWatcher.start();
+
+  stateWatcher = new StateWatcher(aggregator, config);
+  stateWatcher.start();
+}
 
 // ContextWatcher removed — StateWatcher now reads .context/ directly
 
@@ -129,16 +141,31 @@ const server = http.createServer((req, res) => {
   }
 
   if (url.pathname === '/api/actions/focus-session' && req.method === 'POST') {
+    if (isDeployed) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Terminal actions unavailable in deployed mode' }));
+      return;
+    }
     handleFocusSession(req, res);
     return;
   }
 
   if (url.pathname === '/api/actions/send-input' && req.method === 'POST') {
+    if (isDeployed) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Terminal actions unavailable in deployed mode' }));
+      return;
+    }
     handleSendInput(req, res);
     return;
   }
 
   if (url.pathname === '/api/actions/directive-complete' && req.method === 'POST') {
+    if (isDeployed) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Directive management unavailable in deployed mode' }));
+      return;
+    }
     handleDirectiveComplete(req, res);
     return;
   }
@@ -313,10 +340,11 @@ function handleHealth(res: http.ServerResponse): void {
     status: 'ok',
     uptime: process.uptime(),
     startedAt: serverStartTime,
+    deployed: isDeployed,
     watchers: {
-      session: sessionWatcher.ready,
-      directive: directiveWatcher.ready,
-      state: stateWatcher.ready,
+      session: sessionWatcher?.ready ?? null,
+      directive: directiveWatcher?.ready ?? null,
+      state: stateWatcher?.ready ?? null,
     },
     connectedClients: wss.clients.size,
     lastEventTimestamp,
@@ -330,7 +358,12 @@ function handleHealth(res: http.ServerResponse): void {
 }
 
 function handleGetDirective(res: http.ServerResponse): void {
-  const state = directiveWatcher.readCurrentState();
+  if (isDeployed) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ deployed: true, message: 'Directive management unavailable in deployed mode' }));
+    return;
+  }
+  const state = directiveWatcher!.readCurrentState();
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(state));
 }
@@ -505,7 +538,7 @@ function handleDirectiveComplete(req: http.IncomingMessage, res: http.ServerResp
         }
         targetDirectiveName = parsed.directiveName;
       } else {
-        const state = directiveWatcher.readCurrentState();
+        const state = directiveWatcher!.readCurrentState();
         if (!state) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'No active directive' }));
@@ -641,10 +674,10 @@ function shutdown(): void {
   // Stop notifier
   notifier.stop();
 
-  // Close watchers
-  sessionWatcher.stop().catch(console.error);
-  directiveWatcher.stop().catch(console.error);
-  stateWatcher.stop().catch(console.error);
+  // Close watchers (only active in non-deployed mode)
+  sessionWatcher?.stop().catch(console.error);
+  directiveWatcher?.stop().catch(console.error);
+  stateWatcher?.stop().catch(console.error);
 
   // Destroy aggregator (cleans up timers)
   aggregator.destroy();

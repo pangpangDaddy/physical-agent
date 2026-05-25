@@ -3,7 +3,7 @@ import type { MessageParam } from '@anthropic-ai/sdk/resources/messages';
 
 const apiKey = process.env.DASHSCOPE_API_KEY;
 const baseURL = process.env.DASHSCOPE_BASE_URL ?? 'https://coding.dashscope.aliyuncs.com/apps/anthropic';
-const defaultModel = process.env.DASHSCOPE_MODEL ?? 'claude-sonnet-4-5';
+const defaultModel = process.env.DASHSCOPE_MODEL ?? 'qwen3.6-plus';
 
 if (!apiKey) {
   console.warn('[llm] DASHSCOPE_API_KEY is not set — /api/chat will fail until you populate .env');

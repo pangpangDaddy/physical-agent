@@ -62,7 +62,7 @@ if [ ! -f .env ]; then
   cat > .env <<EOF
 DASHSCOPE_API_KEY=$API_KEY
 DASHSCOPE_BASE_URL=https://coding.dashscope.aliyuncs.com/apps/anthropic
-DASHSCOPE_MODEL=qwen3-coder-plus
+DASHSCOPE_MODEL=qwen3.6-plus
 PORT=4444
 EOF
   ok ".env 已生成"

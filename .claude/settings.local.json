@@ -5,7 +5,10 @@
       "Bash(npx vite build)",
       "Bash(grep -c \"animate-in\" dist/assets/*.css)",
       "Bash(ls /Users/yangyang/Repos/gruai/dist/assets/*.css)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(claude --version)",
+      "WebSearch",
+      "Bash(gh api *)"
     ]
   }
 }
