@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>螺旋测微器 — 物理实验室</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    header {
+      text-align: center;
+      padding: 20px;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    header h1 { font-size: 24px; color: #ffd700; }
+    header .subtitle { font-size: 14px; color: #aaa; margin-top: 4px; }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 20px;
+    }
+
+    .main-panel {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .card h3 {
+      font-size: 14px;
+      color: #ffd700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* 螺旋测微器画布 */
+    #micrometer-canvas {
+      width: 100%;
+      height: 280px;
+      background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
+      border-radius: 8px;
+    }
+
+    /* 控制区域 */
+    .controls {
+      display: flex;
+      gap: 16px;
+      margin-top: 16px;
+      align-items: center;
+    }
+
+    .control-group {
+      flex: 1;
+      text-align: center;
+    }
+
+    .control-group label {
+      display: block;
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+
+    .rotate-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .rotate-btn:hover { background: rgba(255,215,0,0.2); border-color: #ffd700; }
+    .rotate-btn:active { transform: scale(0.95); }
+
+    .rotate-btn.large {
+      width: 70px;
+      height: 70px;
+      font-size: 28px;
+    }
+
+    /* 被测物体选择 */
+    .object-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .object-btn {
+      padding: 10px 8px;
+      font-size: 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      color: #ccc;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .object-btn:hover { background: rgba(255,215,0,0.1); border-color: #ffd700; }
+    .object-btn.active { background: rgba(255,215,0,0.2); border-color: #ffd700; color: #ffd700; }
+    .object-btn .icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+    /* 读数显示 */
+    .reading-display {
+      font-family: 'Courier New', monospace;
+      font-size: 32px;
+      text-align: center;
+      padding: 16px;
+      background: #0a0a15;
+      border-radius: 8px;
+      color: #00ff88;
+      border: 1px solid #00ff88;
+      text-shadow: 0 0 10px rgba(0,255,136,0.5);
+    }
+    .reading-display .unit { font-size: 16px; color: #888; margin-left: 4px; }
+
+    /* 读数分解 */
+    .reading-breakdown {
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .reading-breakdown .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .reading-breakdown .label { color: #aaa; }
+    .reading-breakdown .value { color: #ffd700; font-family: monospace; }
+    .reading-breakdown .total { color: #00ff88; font-weight: bold; font-size: 15px; }
+
+    /* 操作提示 */
+    .hint {
+      font-size: 12px;
+      color: #888;
+      line-height: 1.6;
+      padding: 10px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 6px;
+    }
+    .hint strong { color: #ffd700; }
+
+    /* 验证按钮 */
+    .verify-btn {
+      width: 100%;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: bold;
+      background: linear-gradient(135deg, #00c853 0%, #009624 100%);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .verify-btn:hover { transform: scale(1.02); }
+    .verify-btn:active { transform: scale(0.98); }
+
+    /* 输入框 */
+    .answer-input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 18px;
+      font-family: monospace;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      color: #fff;
+      text-align: center;
+    }
+    .answer-input:focus { outline: none; border-color: #ffd700; }
+
+    /* 结果反馈 */
+    .feedback {
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      text-align: center;
+      margin-top: 8px;
+    }
+    .feedback.correct {
+      background: rgba(0,200,83,0.2);
+      border: 1px solid #00c853;
+      color: #00ff88;
+    }
+    .feedback.wrong {
+      background: rgba(255,82,82,0.2);
+      border: 1px solid #ff5252;
+      color: #ff8a80;
+    }
+
+    /* 刻度放大图 */
+    .zoom-view {
+      width: 100%;
+      height: 80px;
+      background: #0a0a15;
+      border-radius: 8px;
+      margin-top: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔬 螺旋测微器模拟器</h1>
+    <div class="subtitle">精度 0.01mm · 旋转套筒测量物体</div>
+  </header>
+
+  <div class="container">
+    <div class="main-panel">
+      <canvas id="micrometer-canvas"></canvas>
+
+      <div class="controls">
+        <div class="control-group">
+          <label>粗调（棘轮）</label>
+          <button class="rotate-btn" onmousedown="startRotate('coarse', -1)" onmouseup="stopRotate()" onmouseleave="stopRotate()">◀</button>
+          <button class="rotate-btn" onmousedown="startRotate('coarse', 1)" onmouseup="stopRotate()" onmouseleave="stopRotate()" style="margin-left: 8px;">▶</button>
+        </div>
+        <div class="control-group">
+          <label>微调（套筒）</label>
+          <button class="rotate-btn large" onmousedown="startRotate('fine', -1)" onmouseup="stopRotate()" onmouseleave="stopRotate()">◀</button>
+          <button class="rotate-btn large" onmousedown="startRotate('fine', 1)" onmouseup="stopRotate()" onmouseleave="stopRotate()" style="margin-left: 8px;">▶</button>
+        </div>
+      </div>
+
+      <canvas class="zoom-view" id="zoom-canvas"></canvas>
+      <div style="text-align: center; font-size: 11px; color: #888; margin-top: 4px;">刻度放大视图</div>
+
+      <div style="margin-top: 16px;">
+        <div style="font-size: 13px; color: #aaa; margin-bottom: 8px;">选择被测物体：</div>
+        <div class="object-grid" id="object-grid"></div>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="card">
+        <h3>📊 测量读数</h3>
+        <div class="reading-display">
+          <span id="reading-value">0.000</span>
+          <span class="unit">mm</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>📖 读数分解</h3>
+        <div class="reading-breakdown">
+          <div class="row">
+            <span class="label">固定刻度（mm）</span>
+            <span class="value" id="fixed-scale">0 mm</span>
+          </div>
+          <div class="row">
+            <span class="label">半毫米线</span>
+            <span class="value" id="half-line">未露出</span>
+          </div>
+          <div class="row">
+            <span class="label">可动刻度</span>
+            <span class="value" id="movable-scale">第 0 格 × 0.01</span>
+          </div>
+          <div class="row" style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
+            <span class="label total">最终结果</span>
+            <span class="value total" id="final-reading">0.000 mm</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>✍️ 练习读数</h3>
+        <input type="number" step="0.001" class="answer-input" id="answer-input" placeholder="输入你的读数 (mm)">
+        <button class="verify-btn" onclick="verifyAnswer()">验证答案</button>
+        <div id="feedback"></div>
+      </div>
+
+      <div class="hint">
+        <strong>读数方法：</strong><br>
+        1. 读固定刻度的整毫米数<br>
+        2. 看半毫米线是否露出（露出 +0.5mm）<br>
+        3. 读可动刻度与基准线对齐的格数 × 0.01mm<br>
+        4. 最终读数 = 固定刻度 + 半毫米 + 可动刻度<br>
+        <strong>注意估读</strong>：最后一位需要估读到 0.001mm
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 被测物体
+    const OBJECTS = [
+      { name: '铜丝直径', icon: '🟤', size: 0.856, color: '#cd7f32' },
+      { name: '纸厚度', icon: '📄', size: 0.108, color: '#f5f5dc' },
+      { name: '钢丝直径', icon: '⚙️', size: 2.340, color: '#808080' },
+      { name: '小球直径', icon: '⚪', size: 5.672, color: '#c0c0c0' },
+      { name: '薄片厚度', icon: '📋', size: 0.435, color: '#90ee90' },
+      { name: '纤维直径', icon: '🧵', size: 0.067, color: '#ff69b4' },
+    ];
+
+    let currentObject = OBJECTS[0];
+    let measurement = 0;  // 当前测量值 (mm)
+    let rotateInterval = null;
+
+    const canvas = document.getElementById('micrometer-canvas');
+    const ctx = canvas.getContext('2d');
+    const zoomCanvas = document.getElementById('zoom-canvas');
+    const zoomCtx = zoomCanvas.getContext('2d');
+
+    function init() {
+      resizeCanvas();
+      renderObjectButtons();
+      measurement = currentObject.size;
+      updateReading();
+      draw();
+
+      // 键盘控制
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') adjustMeasurement(-0.01);
+        if (e.key === 'ArrowRight') adjustMeasurement(0.01);
+        if (e.key === 'ArrowUp') adjustMeasurement(0.5);
+        if (e.key === 'ArrowDown') adjustMeasurement(-0.5);
+      });
+    }
+
+    function resizeCanvas() {
+      canvas.width = canvas.offsetWidth * 2;
+      canvas.height = canvas.offsetHeight * 2;
+      ctx.scale(2, 2);
+
+      zoomCanvas.width = zoomCanvas.offsetWidth * 2;
+      zoomCanvas.height = zoomCanvas.offsetHeight * 2;
+      zoomCtx.scale(2, 2);
+    }
+
+    function renderObjectButtons() {
+      const grid = document.getElementById('object-grid');
+      grid.innerHTML = OBJECTS.map((obj, i) => `
+        <button class="object-btn ${obj === currentObject ? 'active' : ''}" onclick="selectObject(${i})">
+          <span class="icon">${obj.icon}</span>
+          ${obj.name}
+        </button>
+      `).join('');
+    }
+
+    window.selectObject = function(index) {
+      currentObject = OBJECTS[index];
+      measurement = currentObject.size;
+      renderObjectButtons();
+      updateReading();
+      draw();
+    };
+
+    window.startRotate = function(type, direction) {
+      const step = type === 'coarse' ? 0.5 : 0.01;
+      adjustMeasurement(direction * step);
+
+      rotateInterval = setInterval(() => {
+        adjustMeasurement(direction * step);
+      }, 100);
+    };
+
+    window.stopRotate = function() {
+      if (rotateInterval) {
+        clearInterval(rotateInterval);
+        rotateInterval = null;
+      }
+    };
+
+    function adjustMeasurement(delta) {
+      measurement = Math.max(0, Math.min(25, measurement + delta));
+      updateReading();
+      draw();
+    }
+
+    function updateReading() {
+      const fixedMm = Math.floor(measurement);
+      const hasHalfLine = (measurement - fixedMm) >= 0.5;
+      const movableValue = hasHalfLine ? (measurement - fixedMm - 0.5) : (measurement - fixedMm);
+      const movableLines = Math.round(movableValue * 100);
+
+      document.getElementById('reading-value').textContent = measurement.toFixed(3);
+      document.getElementById('fixed-scale').textContent = fixedMm + ' mm';
+      document.getElementById('half-line').textContent = hasHalfLine ? '+0.5 mm (露出)' : '未露出';
+      document.getElementById('movable-scale').textContent = `第 ${movableLines} 格 × 0.01 = ${movableLines * 0.01} mm`;
+      document.getElementById('final-reading').textContent = measurement.toFixed(3) + ' mm';
+    }
+
+    function draw() {
+      drawMicrometer();
+      drawZoomView();
+    }
+
+    function drawMicrometer() {
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      ctx.clearRect(0, 0, w, h);
+
+      const centerY = h / 2;
+      const scale = 20;  // 1mm = 20px
+
+      // 画框架（C型架）
+      ctx.fillStyle = '#4a4a5a';
+      ctx.strokeStyle = '#2a2a3a';
+      ctx.lineWidth = 2;
+
+      // 底座
+      ctx.beginPath();
+      ctx.roundRect(30, centerY - 50, 80, 100, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // 测砧（固定端）
+      ctx.fillStyle = '#c0c0c0';
+      ctx.beginPath();
+      ctx.roundRect(100, centerY - 15, 30, 30, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      // 测微螺杆（可动端）
+      const screwX = 130 + measurement * scale;
+      ctx.fillStyle = '#b0b0b0';
+      ctx.beginPath();
+      ctx.roundRect(screwX, centerY - 15, 30, 30, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      // 画被测物体（在测砧和螺杆之间）
+      if (measurement > 0) {
+        ctx.fillStyle = currentObject.color;
+        ctx.beginPath();
+        ctx.arc(130 + measurement * scale / 2, centerY, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // 物体标签
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(currentObject.name, 130 + measurement * scale / 2, centerY + 35);
+        ctx.textAlign = 'start';
+      }
+
+      // 套筒（固定刻度）
+      const sleeveStartX = 130;
+      const sleeveLength = 200;
+      ctx.fillStyle = '#d4af37';
+      ctx.fillRect(sleeveStartX, centerY - 25, sleeveLength, 50);
+      ctx.strokeStyle = '#8b7500';
+      ctx.strokeRect(sleeveStartX, centerY - 25, sleeveLength, 50);
+
+      // 固定刻度线
+      ctx.fillStyle = '#000';
+      ctx.strokeStyle = '#000';
+      ctx.font = '10px monospace';
+
+      for (let mm = 0; mm <= 25; mm++) {
+        const x = sleeveStartX + mm * scale;
+        const isHalf = mm % 2 === 1;
+
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x, centerY + (isHalf ? -8 : -15));
+        ctx.lineTo(x, centerY + (isHalf ? 8 : 15));
+        ctx.stroke();
+
+        if (mm % 5 === 0) {
+          ctx.fillText(mm.toString(), x - 3, centerY + 25);
+        }
+      }
+
+      // 基准线
+      ctx.strokeStyle = '#ff0000';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sleeveStartX, centerY);
+      ctx.lineTo(sleeveStartX + sleeveLength, centerY);
+      ctx.stroke();
+
+      // 可动刻度（微分筒）
+      const thimbleX = sleeveStartX + sleeveLength;
+      const thimbleWidth = 80;
+
+      // 微分筒主体
+      ctx.fillStyle = '#a0a0a0';
+      ctx.fillRect(thimbleX, centerY - 30, thimbleWidth, 60);
+      ctx.strokeStyle = '#707070';
+      ctx.strokeRect(thimbleX, centerY - 30, thimbleWidth, 60);
+
+      // 可动刻度线
+      const movableOffset = (measurement % 0.5) * 100;
+      ctx.fillStyle = '#000';
+      ctx.strokeStyle = '#000';
+      ctx.font = '9px monospace';
+
+      for (let i = 0; i < 50; i++) {
+        const offset = ((i - movableOffset) % 50 + 50) % 50;
+        const x = thimbleX + 5 + (offset / 50) * (thimbleWidth - 10);
+
+        const isMain = i % 5 === 0;
+        ctx.lineWidth = isMain ? 1.5 : 0.5;
+        ctx.beginPath();
+        ctx.moveTo(x, centerY - 30);
+        ctx.lineTo(x, centerY - (isMain ? 20 : 25));
+        ctx.stroke();
+
+        if (isMain) {
+          ctx.fillText(i.toString(), x - 3, centerY - 35);
+        }
+      }
+
+      // 棘轮
+      const ratchetX = thimbleX + thimbleWidth;
+      ctx.fillStyle = '#808080';
+      ctx.beginPath();
+      ctx.arc(ratchetX + 20, centerY, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#505050';
+      ctx.stroke();
+
+      // 棘轮纹理
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2 + measurement * 10;
+        ctx.beginPath();
+        ctx.moveTo(ratchetX + 20 + Math.cos(angle) * 12, centerY + Math.sin(angle) * 12);
+        ctx.lineTo(ratchetX + 20 + Math.cos(angle) * 18, centerY + Math.sin(angle) * 18);
+        ctx.stroke();
+      }
+    }
+
+    function drawZoomView() {
+      const w = zoomCanvas.offsetWidth;
+      const h = zoomCanvas.offsetHeight;
+      zoomCtx.clearRect(0, 0, w, h);
+
+      const centerY = h / 2;
+      const scale = 100;  // 放大比例
+
+      // 固定刻度（放大）
+      zoomCtx.fillStyle = '#d4af37';
+      zoomCtx.fillRect(20, centerY - 20, w - 40, 40);
+      zoomCtx.strokeStyle = '#8b7500';
+      zoomCtx.strokeRect(20, centerY - 20, w - 40, 40);
+
+      // 基准线
+      zoomCtx.strokeStyle = '#ff0000';
+      zoomCtx.lineWidth = 2;
+      zoomCtx.beginPath();
+      zoomCtx.moveTo(20, centerY);
+      zoomCtx.lineTo(w - 20, centerY);
+      zoomCtx.stroke();
+
+      // 固定刻度线（放大）
+      const fixedMm = Math.floor(measurement);
+      const hasHalfLine = (measurement - fixedMm) >= 0.5;
+
+      zoomCtx.fillStyle = '#000';
+      zoomCtx.strokeStyle = '#000';
+      zoomCtx.font = '12px monospace';
+
+      // 显示当前读数附近的刻度
+      const startMm = Math.max(0, fixedMm - 2);
+      const endMm = Math.min(25, fixedMm + 3);
+
+      for (let mm = startMm; mm <= endMm; mm++) {
+        const x = w / 2 + (mm - measurement) * scale;
+
+        if (x < 20 || x > w - 20) continue;
+
+        // 毫米线
+        zoomCtx.lineWidth = 2;
+        zoomCtx.beginPath();
+        zoomCtx.moveTo(x, centerY - 15);
+        zoomCtx.lineTo(x, centerY + 15);
+        zoomCtx.stroke();
+        zoomCtx.fillText(mm.toString(), x - 4, centerY + 28);
+
+        // 半毫米线
+        const halfX = x + scale / 2;
+        if (halfX > 20 && halfX < w - 20) {
+          zoomCtx.lineWidth = 1;
+          zoomCtx.beginPath();
+          zoomCtx.moveTo(halfX, centerY - 8);
+          zoomCtx.lineTo(halfX, centerY + 8);
+          zoomCtx.stroke();
+        }
+      }
+
+      // 可动刻度与基准线对齐的位置
+      const alignX = w / 2;
+      zoomCtx.strokeStyle = '#00ff00';
+      zoomCtx.lineWidth = 3;
+      zoomCtx.beginPath();
+      zoomCtx.moveTo(alignX, centerY - 25);
+      zoomCtx.lineTo(alignX, centerY + 25);
+      zoomCtx.stroke();
+
+      // 读数标注
+      zoomCtx.fillStyle = '#00ff88';
+      zoomCtx.font = '14px monospace';
+      zoomCtx.fillText(`← 读数位置: ${measurement.toFixed(3)} mm`, alignX + 10, centerY - 30);
+    }
+
+    window.verifyAnswer = function() {
+      const input = parseFloat(document.getElementById('answer-input').value);
+      const correct = measurement;
+
+      const feedback = document.getElementById('feedback');
+
+      if (isNaN(input)) {
+        feedback.className = 'feedback wrong';
+        feedback.textContent = '请输入有效的数值';
+        return;
+      }
+
+      // 允许 0.005mm 的误差（估读误差）
+      if (Math.abs(input - correct) <= 0.005) {
+        feedback.className = 'feedback correct';
+        feedback.textContent = `✅ 正确！正确答案是 ${correct.toFixed(3)} mm`;
+      } else {
+        feedback.className = 'feedback wrong';
+        feedback.textContent = `❌ 不对哦，正确答案是 ${correct.toFixed(3)} mm，再试试？`;
+      }
+    };
+
+    // 启动
+    init();
+    window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+  </script>
+</body>
+</html>

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>游标卡尺 — 物理实验室</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    header {
+      text-align: center;
+      padding: 20px;
+      background: rgba(0,0,0,0.3);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    header h1 { font-size: 24px; color: #ffd700; }
+    header .subtitle { font-size: 14px; color: #aaa; margin-top: 4px; }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 20px;
+    }
+
+    .main-panel {
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 24px;
+    }
+
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.08);
+      border-radius: 10px;
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .card h3 {
+      font-size: 14px;
+      color: #ffd700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* 游标卡尺画布 */
+    #caliper-canvas {
+      width: 100%;
+      height: 300px;
+      background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
+      border-radius: 8px;
+      cursor: grab;
+    }
+    #caliper-canvas:active { cursor: grabbing; }
+
+    /* 被测物体选择 */
+    .object-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .object-btn {
+      padding: 10px 8px;
+      font-size: 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      color: #ccc;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .object-btn:hover { background: rgba(255,215,0,0.1); border-color: #ffd700; }
+    .object-btn.active { background: rgba(255,215,0,0.2); border-color: #ffd700; color: #ffd700; }
+    .object-btn .icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+    /* 读数显示 */
+    .reading-display {
+      font-family: 'Courier New', monospace;
+      font-size: 32px;
+      text-align: center;
+      padding: 16px;
+      background: #0a0a15;
+      border-radius: 8px;
+      color: #00ff88;
+      border: 1px solid #00ff88;
+      text-shadow: 0 0 10px rgba(0,255,136,0.5);
+    }
+    .reading-display .unit { font-size: 16px; color: #888; margin-left: 4px; }
+
+    /* 读数分解 */
+    .reading-breakdown {
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .reading-breakdown .row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .reading-breakdown .label { color: #aaa; }
+    .reading-breakdown .value { color: #ffd700; font-family: monospace; }
+    .reading-breakdown .total { color: #00ff88; font-weight: bold; font-size: 15px; }
+
+    /* 操作提示 */
+    .hint {
+      font-size: 12px;
+      color: #888;
+      line-height: 1.6;
+      padding: 10px;
+      background: rgba(0,0,0,0.2);
+      border-radius: 6px;
+    }
+    .hint strong { color: #ffd700; }
+
+    /* 验证按钮 */
+    .verify-btn {
+      width: 100%;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: bold;
+      background: linear-gradient(135deg, #00c853 0%, #009624 100%);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .verify-btn:hover { transform: scale(1.02); }
+    .verify-btn:active { transform: scale(0.98); }
+
+    /* 输入框 */
+    .answer-input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 18px;
+      font-family: monospace;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      color: #fff;
+      text-align: center;
+    }
+    .answer-input:focus { outline: none; border-color: #ffd700; }
+
+    /* 结果反馈 */
+    .feedback {
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      text-align: center;
+      margin-top: 8px;
+    }
+    .feedback.correct {
+      background: rgba(0,200,83,0.2);
+      border: 1px solid #00c853;
+      color: #00ff88;
+    }
+    .feedback.wrong {
+      background: rgba(255,82,82,0.2);
+      border: 1px solid #ff5252;
+      color: #ff8a80;
+    }
+
+    /* 精度选择 */
+    .precision-selector {
+      display: flex;
+      gap: 8px;
+    }
+    .precision-btn {
+      flex: 1;
+      padding: 8px;
+      font-size: 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 6px;
+      color: #ccc;
+      cursor: pointer;
+    }
+    .precision-btn.active {
+      background: rgba(255,215,0,0.2);
+      border-color: #ffd700;
+      color: #ffd700;
+    }
+
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📏 游标卡尺模拟器</h1>
+    <div class="subtitle">精度 0.02mm · 拖动游标测量物体</div>
+  </header>
+
+  <div class="container">
+    <div class="main-panel">
+      <canvas id="caliper-canvas"></canvas>
+
+      <div style="margin-top: 16px;">
+        <div style="font-size: 13px; color: #aaa; margin-bottom: 8px;">选择被测物体：</div>
+        <div class="object-grid" id="object-grid"></div>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="card">
+        <h3>📊 测量读数</h3>
+        <div class="reading-display">
+          <span id="reading-value">0.00</span>
+          <span class="unit">mm</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>📖 读数分解</h3>
+        <div class="reading-breakdown">
+          <div class="row">
+            <span class="label">主尺读数</span>
+            <span class="value" id="main-scale">0 mm</span>
+          </div>
+          <div class="row">
+            <span class="label">游标尺对齐</span>
+            <span class="value" id="vernier-scale">第 0 格</span>
+          </div>
+          <div class="row">
+            <span class="label">计算</span>
+            <span class="value" id="calc-detail">0 + 0 × 0.02</span>
+          </div>
+          <div class="row" style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
+            <span class="label total">最终结果</span>
+            <span class="value total" id="final-reading">0.00 mm</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>✍️ 练习读数</h3>
+        <input type="number" step="0.02" class="answer-input" id="answer-input" placeholder="输入你的读数 (mm)">
+        <button class="verify-btn" onclick="verifyAnswer()">验证答案</button>
+        <div id="feedback"></div>
+      </div>
+
+      <div class="card">
+        <h3>⚙️ 精度设置</h3>
+        <div class="precision-selector">
+          <button class="precision-btn active" onclick="setPrecision(10)">10分度<br>0.1mm</button>
+          <button class="precision-btn" onclick="setPrecision(20)">20分度<br>0.05mm</button>
+          <button class="precision-btn" onclick="setPrecision(50)">50分度<br>0.02mm</button>
+        </div>
+      </div>
+
+      <div class="hint">
+        <strong>操作方法：</strong><br>
+        1. 选择一个被测物体<br>
+        2. 拖动卡尺的<strong>游标部分</strong>（右侧可移动部分）来夹紧物体<br>
+        3. 先读主尺的整毫米数，再找游标尺上与主尺对齐的刻度线<br>
+        4. 最终读数 = 主尺读数 + 游标格数 × 精度
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 被测物体
+    const OBJECTS = [
+      { name: '钢珠', icon: '⚪', size: 12.34, color: '#c0c0c0' },
+      { name: '铜线', icon: '🟤', size: 2.56, color: '#cd7f32' },
+      { name: '铝管外径', icon: '⭕', size: 25.80, color: '#a8a8a8' },
+      { name: '木块', icon: '🟫', size: 38.42, color: '#8b4513' },
+      { name: '铁片厚度', icon: '⬛', size: 1.64, color: '#696969' },
+      { name: '铅笔直径', icon: '✏️', size: 7.18, color: '#ffd700' },
+    ];
+
+    let currentObject = OBJECTS[0];
+    let caliperPosition = 0;  // 游标位置 (mm)
+    let precision = 10;  // 10分度、20分度、50分度
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartPosition = 0;
+
+    const canvas = document.getElementById('caliper-canvas');
+    const ctx = canvas.getContext('2d');
+
+    // 初始化
+    function init() {
+      resizeCanvas();
+      renderObjectButtons();
+      caliperPosition = currentObject.size;
+      draw();
+
+      canvas.addEventListener('mousedown', startDrag);
+      canvas.addEventListener('mousemove', drag);
+      canvas.addEventListener('mouseup', endDrag);
+      canvas.addEventListener('mouseleave', endDrag);
+      canvas.addEventListener('touchstart', handleTouch);
+      canvas.addEventListener('touchmove', handleTouch);
+      canvas.addEventListener('touchend', endDrag);
+    }
+
+    function resizeCanvas() {
+      canvas.width = canvas.offsetWidth * 2;
+      canvas.height = canvas.offsetHeight * 2;
+      ctx.scale(2, 2);
+    }
+
+    function renderObjectButtons() {
+      const grid = document.getElementById('object-grid');
+      grid.innerHTML = OBJECTS.map((obj, i) => `
+        <button class="object-btn ${obj === currentObject ? 'active' : ''}" onclick="selectObject(${i})">
+          <span class="icon">${obj.icon}</span>
+          ${obj.name}
+        </button>
+      `).join('');
+    }
+
+    window.selectObject = function(index) {
+      currentObject = OBJECTS[index];
+      caliperPosition = currentObject.size;
+      renderObjectButtons();
+      updateReading();
+      draw();
+    };
+
+    window.setPrecision = function(p) {
+      precision = p;
+      document.querySelectorAll('.precision-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      updateReading();
+      draw();
+    };
+
+    function startDrag(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // 判断是否点击游标部分（右半部分）
+      const caliperWidth = canvas.offsetWidth;
+      if (x > caliperWidth * 0.3) {
+        isDragging = true;
+        dragStartX = x;
+        dragStartPosition = caliperPosition;
+      }
+    }
+
+    function drag(e) {
+      if (!isDragging) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const dx = x - dragStartX;
+
+      // 100px = 50mm 的缩放比例
+      const scale = 50 / 100;
+      caliperPosition = Math.max(0, Math.min(150, dragStartPosition + dx * scale));
+
+      updateReading();
+      draw();
+    }
+
+    function handleTouch(e) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const mouseEvent = new MouseEvent(e.type === 'touchstart' ? 'mousedown' : 'mousemove', {
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      });
+      if (e.type === 'touchstart') startDrag(mouseEvent);
+      else drag(mouseEvent);
+    }
+
+    function endDrag() {
+      isDragging = false;
+    }
+
+    function updateReading() {
+      const mainScale = Math.floor(caliperPosition);
+      const remainder = caliperPosition - mainScale;
+      const vernierDivisions = precision;
+      const precisionValue = 1 / vernierDivisions;
+      const vernierLine = Math.round(remainder / precisionValue);
+      const actualVernierValue = vernierLine * precisionValue;
+      const total = mainScale + actualVernierValue;
+
+      document.getElementById('reading-value').textContent = total.toFixed(precision === 10 ? 1 : 2);
+      document.getElementById('main-scale').textContent = mainScale + ' mm';
+      document.getElementById('vernier-scale').textContent = `第 ${vernierLine} 格`;
+      document.getElementById('calc-detail').textContent = `${mainScale} + ${vernierLine} × ${precisionValue}`;
+      document.getElementById('final-reading').textContent = total.toFixed(precision === 10 ? 1 : 2) + ' mm';
+    }
+
+    function draw() {
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      ctx.clearRect(0, 0, w, h);
+
+      const centerY = h / 2;
+      const scale = 4;  // 1mm = 4px
+
+      // 画主尺（固定部分）
+      drawMainScale(20, centerY, w - 40, scale);
+
+      // 画固定爪
+      drawJaw(20, centerY, false);
+
+      // 画被测物体
+      drawObject(centerY, scale);
+
+      // 画游标（可动部分）
+      const movableX = 20 + caliperPosition * scale;
+      drawVernierScale(movableX, centerY, w - movableX - 20, scale);
+      drawJaw(movableX, centerY, true);
+    }
+
+    function drawMainScale(x, y, width, scale) {
+      // 主尺主体
+      ctx.fillStyle = '#d4af37';
+      ctx.fillRect(x, y - 40, width, 30);
+      ctx.strokeStyle = '#8b7500';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y - 40, width, 30);
+
+      // 主尺刻度
+      ctx.fillStyle = '#333';
+      ctx.strokeStyle = '#333';
+      ctx.font = '10px monospace';
+
+      const startMm = 0;
+      const endMm = Math.min(150, width / scale);
+
+      for (let mm = startMm; mm <= endMm; mm++) {
+        const px = x + 20 + mm * scale;
+        let tickHeight = 5;
+
+        if (mm % 10 === 0) {
+          tickHeight = 12;
+          ctx.fillText(mm.toString(), px - 4, y - 18);
+        } else if (mm % 5 === 0) {
+          tickHeight = 8;
+        }
+
+        ctx.lineWidth = mm % 10 === 0 ? 1.5 : 0.5;
+        ctx.beginPath();
+        ctx.moveTo(px, y - 10);
+        ctx.lineTo(px, y - 10 - tickHeight);
+        ctx.stroke();
+      }
+    }
+
+    function drawVernierScale(x, y, width, scale) {
+      const vernierWidth = precision * scale;  // 游标尺总长
+
+      // 游标尺主体
+      ctx.fillStyle = '#c0c0c0';
+      ctx.fillRect(x, y - 35, Math.max(vernierWidth, 100), 25);
+      ctx.strokeStyle = '#808080';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y - 35, Math.max(vernierWidth, 100), 25);
+
+      // 游标刻度
+      const precisionValue = 1 / precision;
+      const mainPosition = Math.floor(caliperPosition);
+      const offset = (caliperPosition - mainPosition) * scale;
+
+      ctx.fillStyle = '#000';
+      ctx.strokeStyle = '#000';
+      ctx.font = '9px monospace';
+
+      for (let i = 0; i <= precision; i++) {
+        const px = x + 10 + i * scale;
+        const mainPx = x - offset + mainPosition * scale + i * scale;
+
+        // 检查是否与主尺刻度对齐
+        const alignment = Math.abs((mainPx - 20) % scale);
+        const isAligned = alignment < 0.5 || alignment > scale - 0.5;
+
+        let tickHeight = isAligned ? 15 : 8;
+        ctx.lineWidth = isAligned ? 2 : 0.8;
+        ctx.strokeStyle = isAligned ? '#ff0000' : '#000';
+
+        ctx.beginPath();
+        ctx.moveTo(px, y - 10);
+        ctx.lineTo(px, y - 10 - tickHeight);
+        ctx.stroke();
+
+        if (i % 5 === 0) {
+          ctx.fillStyle = isAligned ? '#ff0000' : '#000';
+          ctx.fillText(i.toString(), px - 2, y - 18);
+        }
+      }
+    }
+
+    function drawJaw(x, y, isMovable) {
+      const jawHeight = 60;
+      const jawWidth = 15;
+
+      // 外量爪
+      ctx.fillStyle = isMovable ? '#a0a0a0' : '#b8860b';
+      ctx.beginPath();
+      ctx.moveTo(x, y - 40);
+      ctx.lineTo(x + (isMovable ? -jawWidth : jawWidth), y - 40);
+      ctx.lineTo(x + (isMovable ? -jawWidth : jawWidth), y + jawHeight);
+      ctx.lineTo(x, y + jawHeight - 5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#555';
+      ctx.stroke();
+    }
+
+    function drawObject(y, scale) {
+      if (!currentObject) return;
+
+      const objectX = 20 + 20;
+      const objectWidth = currentObject.size * scale;
+      const objectHeight = 30;
+
+      // 画物体
+      ctx.fillStyle = currentObject.color;
+      ctx.fillRect(objectX, y - 5, objectWidth, objectHeight);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(objectX, y - 5, objectWidth, objectHeight);
+
+      // 标签
+      ctx.fillStyle = '#fff';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(currentObject.name, objectX + 5, y + 15);
+    }
+
+    window.verifyAnswer = function() {
+      const input = parseFloat(document.getElementById('answer-input').value);
+      const correct = parseFloat(document.getElementById('reading-value').textContent);
+      const tolerance = 1 / precision;
+
+      const feedback = document.getElementById('feedback');
+
+      if (isNaN(input)) {
+        feedback.className = 'feedback wrong';
+        feedback.textContent = '请输入有效的数值';
+        return;
+      }
+
+      if (Math.abs(input - correct) <= tolerance) {
+        feedback.className = 'feedback correct';
+        feedback.textContent = `✅ 正确！正确答案是 ${correct.toFixed(precision === 10 ? 1 : 2)} mm`;
+      } else {
+        feedback.className = 'feedback wrong';
+        feedback.textContent = `❌ 不对哦，正确答案是 ${correct.toFixed(precision === 10 ? 1 : 2)} mm，再试试？`;
+      }
+    };
+
+    // 启动
+    init();
+    window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+  </script>
+</body>
+</html>

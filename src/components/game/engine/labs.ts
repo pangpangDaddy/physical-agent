@@ -34,6 +34,8 @@ export const PHYSICS_LABS: Record<RoomZoneId, PhysicsLab> = {
     topics: ['kinematics', 'newton-laws', 'energy', 'momentum', 'circular-motion'],
     scenarios: [
       { id: 'traction-game', title: '越野车牵引力', description: '通过换挡操控越野车，理解牵引力 / 摩擦力 / 功率关系' },
+      { id: 'vernier-caliper', title: '游标卡尺', description: '学习使用游标卡尺测量长度，掌握 10/20/50 分度读数方法' },
+      { id: 'micrometer', title: '螺旋测微器', description: '学习使用千分尺测量微小长度，精度达 0.01mm，练习估读' },
     ],
     systemPrompt:
       '你是高中力学实验室的教学助手。专注于运动学、牛顿三定律、能量守恒、动量守恒、圆周运动等主题。\n' +
