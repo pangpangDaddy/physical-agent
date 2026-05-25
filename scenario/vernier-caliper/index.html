@@ -63,7 +63,7 @@
     /* 游标卡尺画布 */
     #caliper-canvas {
       width: 100%;
-      height: 300px;
+      height: 450px;
       background: linear-gradient(180deg, #2a2a3e 0%, #1a1a2e 100%);
       border-radius: 8px;
       cursor: grab;
@@ -73,7 +73,7 @@
     /* 被测物体选择 */
     .object-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 8px;
     }
 
@@ -210,7 +210,7 @@
 <body>
   <header>
     <h1>📏 游标卡尺模拟器</h1>
-    <div class="subtitle">精度 0.02mm · 拖动游标测量物体</div>
+    <div class="subtitle">拖动游标滑动部分来测量 · 先看主尺再看游标对齐</div>
   </header>
 
   <div class="container">
@@ -273,27 +273,28 @@
       <div class="hint">
         <strong>操作方法：</strong><br>
         1. 选择一个被测物体<br>
-        2. 拖动卡尺的<strong>游标部分</strong>（右侧可移动部分）来夹紧物体<br>
-        3. 先读主尺的整毫米数，再找游标尺上与主尺对齐的刻度线<br>
-        4. 最终读数 = 主尺读数 + 游标格数 × 精度
+        2. 拖动卡尺的<strong>游标部分</strong>（右侧可滑动部分）来夹紧物体<br>
+        3. 先读主尺的整毫米数（看游标零线左边的主尺刻度）<br>
+        4. 再找游标尺上与主尺<strong>对齐</strong>的刻度线<br>
+        5. 最终读数 = 主尺读数 + 游标格数 × 精度
       </div>
     </div>
   </div>
 
   <script>
-    // 被测物体
+    // ===== 被测物体 =====
     const OBJECTS = [
-      { name: '钢珠', icon: '⚪', size: 12.34, color: '#c0c0c0' },
-      { name: '铜线', icon: '🟤', size: 2.56, color: '#cd7f32' },
+      { name: '钢珠',     icon: '⚪', size: 12.34, color: '#c0c0c0' },
+      { name: '铜线',     icon: '🟤', size: 2.56,  color: '#cd7f32' },
       { name: '铝管外径', icon: '⭕', size: 25.80, color: '#a8a8a8' },
-      { name: '木块', icon: '🟫', size: 38.42, color: '#8b4513' },
-      { name: '铁片厚度', icon: '⬛', size: 1.64, color: '#696969' },
-      { name: '铅笔直径', icon: '✏️', size: 7.18, color: '#ffd700' },
+      { name: '木块',     icon: '🟫', size: 38.42, color: '#8b4513' },
+      { name: '铁片厚度', icon: '⬛', size: 1.64,  color: '#696969' },
+      { name: '铅笔直径', icon: '✏️', size: 7.18,  color: '#ffd700' },
     ];
 
     let currentObject = OBJECTS[0];
-    let caliperPosition = 0;  // 游标位置 (mm)
-    let precision = 10;  // 10分度、20分度、50分度
+    let caliperPosition = 0;   // mm — 游标零线位置
+    let precision = 10;        // 分度数
     let isDragging = false;
     let dragStartX = 0;
     let dragStartPosition = 0;
@@ -301,26 +302,37 @@
     const canvas = document.getElementById('caliper-canvas');
     const ctx = canvas.getContext('2d');
 
-    // 初始化
+    // ===== 常量 =====
+    const SCALE = 8;           // 1mm = 8px
+    const BEAM_TOP = 50;
+    const BEAM_H = 50;
+    const BEAM_BOT = BEAM_TOP + BEAM_H;              // 100
+    const JAW_BOTTOM = 390;
+    const FIXED_INNER = 80;   // 固定爪内侧面 x
+
+    // ===== 初始化 =====
     function init() {
       resizeCanvas();
       renderObjectButtons();
       caliperPosition = currentObject.size;
+      updateReading();
       draw();
 
       canvas.addEventListener('mousedown', startDrag);
       canvas.addEventListener('mousemove', drag);
       canvas.addEventListener('mouseup', endDrag);
       canvas.addEventListener('mouseleave', endDrag);
-      canvas.addEventListener('touchstart', handleTouch);
-      canvas.addEventListener('touchmove', handleTouch);
+      canvas.addEventListener('touchstart', handleTouch, { passive: false });
+      canvas.addEventListener('touchmove', handleTouch, { passive: false });
       canvas.addEventListener('touchend', endDrag);
+      window.addEventListener('keydown', handleKey);
     }
 
     function resizeCanvas() {
-      canvas.width = canvas.offsetWidth * 2;
-      canvas.height = canvas.offsetHeight * 2;
-      ctx.scale(2, 2);
+      const dpr = window.devicePixelRatio || 2;
+      canvas.width = canvas.offsetWidth * dpr;
+      canvas.height = canvas.offsetHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     function renderObjectButtons() {
@@ -328,7 +340,7 @@
       grid.innerHTML = OBJECTS.map((obj, i) => `
         <button class="object-btn ${obj === currentObject ? 'active' : ''}" onclick="selectObject(${i})">
           <span class="icon">${obj.icon}</span>
-          ${obj.name}
+          ${obj.name}<br><small style="color:#888">${obj.size} mm</small>
         </button>
       `).join('');
     }
@@ -343,24 +355,19 @@
 
     window.setPrecision = function(p) {
       precision = p;
-      document.querySelectorAll('.precision-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.precision-btn').forEach(b => b.classList.remove('active'));
       event.target.classList.add('active');
       updateReading();
       draw();
     };
 
+    // ===== 拖动 =====
     function startDrag(e) {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      // 判断是否点击游标部分（右半部分）
-      const caliperWidth = canvas.offsetWidth;
-      if (x > caliperWidth * 0.3) {
-        isDragging = true;
-        dragStartX = x;
-        dragStartPosition = caliperPosition;
-      }
+      isDragging = true;
+      dragStartX = x;
+      dragStartPosition = caliperPosition;
     }
 
     function drag(e) {
@@ -368,11 +375,18 @@
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const dx = x - dragStartX;
+      const MM_PER_PX = 0.15;
+      caliperPosition = Math.max(0, Math.min(100, dragStartPosition + dx * MM_PER_PX));
+      updateReading();
+      draw();
+    }
 
-      // 100px = 50mm 的缩放比例
-      const scale = 50 / 100;
-      caliperPosition = Math.max(0, Math.min(150, dragStartPosition + dx * scale));
-
+    function endDrag() {
+      if (!isDragging) return;
+      isDragging = false;
+      // 松手时吸附到精度网格
+      const precVal = 1 / precision;
+      caliperPosition = Math.round(caliperPosition / precVal) * precVal;
       updateReading();
       draw();
     }
@@ -380,172 +394,355 @@
     function handleTouch(e) {
       e.preventDefault();
       const touch = e.touches[0];
-      const mouseEvent = new MouseEvent(e.type === 'touchstart' ? 'mousedown' : 'mousemove', {
-        clientX: touch.clientX,
-        clientY: touch.clientY
-      });
-      if (e.type === 'touchstart') startDrag(mouseEvent);
-      else drag(mouseEvent);
+      if (e.type === 'touchstart') {
+        startDrag({ clientX: touch.clientX, clientY: touch.clientY });
+      } else {
+        drag({ clientX: touch.clientX, clientY: touch.clientY });
+      }
     }
 
-    function endDrag() {
-      isDragging = false;
+    function handleKey(e) {
+      const precVal = 1 / precision;
+      if (e.key === 'ArrowLeft')  { caliperPosition = Math.max(0, caliperPosition - precVal); updateReading(); draw(); }
+      if (e.key === 'ArrowRight') { caliperPosition = Math.min(100, caliperPosition + precVal); updateReading(); draw(); }
     }
 
+    // ===== 读数更新 =====
     function updateReading() {
-      const mainScale = Math.floor(caliperPosition);
-      const remainder = caliperPosition - mainScale;
-      const vernierDivisions = precision;
-      const precisionValue = 1 / vernierDivisions;
-      const vernierLine = Math.round(remainder / precisionValue);
-      const actualVernierValue = vernierLine * precisionValue;
-      const total = mainScale + actualVernierValue;
+      const mainScaleVal = Math.floor(caliperPosition);
+      const remainder = caliperPosition - mainScaleVal;
+      const precVal = 1 / precision;
+      const vernierLine = Math.round(remainder / precVal);
+      const actualVernierVal = vernierLine * precVal;
+      const total = mainScaleVal + actualVernierVal;
+      const decimals = precision === 10 ? 1 : 2;
 
-      document.getElementById('reading-value').textContent = total.toFixed(precision === 10 ? 1 : 2);
-      document.getElementById('main-scale').textContent = mainScale + ' mm';
-      document.getElementById('vernier-scale').textContent = `第 ${vernierLine} 格`;
-      document.getElementById('calc-detail').textContent = `${mainScale} + ${vernierLine} × ${precisionValue}`;
-      document.getElementById('final-reading').textContent = total.toFixed(precision === 10 ? 1 : 2) + ' mm';
+      document.getElementById('reading-value').textContent = total.toFixed(decimals);
+      document.getElementById('main-scale').textContent = mainScaleVal + ' mm';
+      document.getElementById('vernier-scale').textContent = '第 ' + vernierLine + ' 格';
+      document.getElementById('calc-detail').textContent =
+        mainScaleVal + ' + ' + vernierLine + ' × ' + precVal.toFixed(precision === 10 ? 1 : 2);
+      document.getElementById('final-reading').textContent = total.toFixed(decimals) + ' mm';
     }
+
+    // ==========================================================
+    //  绘  制
+    // ==========================================================
 
     function draw() {
       const w = canvas.offsetWidth;
       const h = canvas.offsetHeight;
       ctx.clearRect(0, 0, w, h);
 
-      const centerY = h / 2;
-      const scale = 4;  // 1mm = 4px
+      const movableInner = FIXED_INNER + caliperPosition * SCALE;
 
-      // 画主尺（固定部分）
-      drawMainScale(20, centerY, w - 40, scale);
-
-      // 画固定爪
-      drawJaw(20, centerY, false);
-
-      // 画被测物体
-      drawObject(centerY, scale);
-
-      // 画游标（可动部分）
-      const movableX = 20 + caliperPosition * scale;
-      drawVernierScale(movableX, centerY, w - movableX - 20, scale);
-      drawJaw(movableX, centerY, true);
+      drawBeam(w);
+      drawMainScale(w);
+      drawObject(movableInner);
+      drawFixedJaw();
+      drawVernierPlate(movableInner);
+      drawMovableJaw(movableInner);
+      drawGapLine(movableInner);
     }
 
-    function drawMainScale(x, y, width, scale) {
-      // 主尺主体
-      ctx.fillStyle = '#d4af37';
-      ctx.fillRect(x, y - 40, width, 30);
+    // --- 主尺梁 ---
+    function drawBeam(w) {
+      // 金属渐变
+      const grad = ctx.createLinearGradient(0, BEAM_TOP, 0, BEAM_BOT);
+      grad.addColorStop(0, '#e8d060');
+      grad.addColorStop(0.3, '#d4b840');
+      grad.addColorStop(0.7, '#c8a830');
+      grad.addColorStop(1, '#b89828');
+      ctx.fillStyle = grad;
+
+      // 圆角矩形梁
+      roundRect(30, BEAM_TOP, w - 60, BEAM_H, 4);
+      ctx.fill();
       ctx.strokeStyle = '#8b7500';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, y - 40, width, 30);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
 
-      // 主尺刻度
-      ctx.fillStyle = '#333';
-      ctx.strokeStyle = '#333';
-      ctx.font = '10px monospace';
+      // 顶部高光
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(32, BEAM_TOP + 2, w - 64, 6);
+    }
 
-      const startMm = 0;
-      const endMm = Math.min(150, width / scale);
+    // --- 主尺刻度 ---
+    function drawMainScale(w) {
+      const maxMm = Math.min(100, Math.floor((w - FIXED_INNER - 30) / SCALE));
 
-      for (let mm = startMm; mm <= endMm; mm++) {
-        const px = x + 20 + mm * scale;
-        let tickHeight = 5;
+      ctx.save();
+      for (let mm = 0; mm <= maxMm; mm++) {
+        const x = FIXED_INNER + mm * SCALE;
 
+        // 刻度线高度：厘米 22px，半厘米 16px，毫米 10px
+        let tickH = 10;
+        if (mm % 10 === 0) tickH = 22;
+        else if (mm % 5 === 0) tickH = 16;
+
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = (mm % 10 === 0) ? 1.5 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x, BEAM_BOT);
+        ctx.lineTo(x, BEAM_BOT + tickH);
+        ctx.stroke();
+
+        // 厘米数字（在梁内部）
         if (mm % 10 === 0) {
-          tickHeight = 12;
-          ctx.fillText(mm.toString(), px - 4, y - 18);
+          ctx.fillStyle = '#333';
+          ctx.font = 'bold 13px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(mm.toString(), x, BEAM_TOP + 32);
         } else if (mm % 5 === 0) {
-          tickHeight = 8;
-        }
-
-        ctx.lineWidth = mm % 10 === 0 ? 1.5 : 0.5;
-        ctx.beginPath();
-        ctx.moveTo(px, y - 10);
-        ctx.lineTo(px, y - 10 - tickHeight);
-        ctx.stroke();
-      }
-    }
-
-    function drawVernierScale(x, y, width, scale) {
-      const vernierWidth = precision * scale;  // 游标尺总长
-
-      // 游标尺主体
-      ctx.fillStyle = '#c0c0c0';
-      ctx.fillRect(x, y - 35, Math.max(vernierWidth, 100), 25);
-      ctx.strokeStyle = '#808080';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x, y - 35, Math.max(vernierWidth, 100), 25);
-
-      // 游标刻度
-      const precisionValue = 1 / precision;
-      const mainPosition = Math.floor(caliperPosition);
-      const offset = (caliperPosition - mainPosition) * scale;
-
-      ctx.fillStyle = '#000';
-      ctx.strokeStyle = '#000';
-      ctx.font = '9px monospace';
-
-      for (let i = 0; i <= precision; i++) {
-        const px = x + 10 + i * scale;
-        const mainPx = x - offset + mainPosition * scale + i * scale;
-
-        // 检查是否与主尺刻度对齐
-        const alignment = Math.abs((mainPx - 20) % scale);
-        const isAligned = alignment < 0.5 || alignment > scale - 0.5;
-
-        let tickHeight = isAligned ? 15 : 8;
-        ctx.lineWidth = isAligned ? 2 : 0.8;
-        ctx.strokeStyle = isAligned ? '#ff0000' : '#000';
-
-        ctx.beginPath();
-        ctx.moveTo(px, y - 10);
-        ctx.lineTo(px, y - 10 - tickHeight);
-        ctx.stroke();
-
-        if (i % 5 === 0) {
-          ctx.fillStyle = isAligned ? '#ff0000' : '#000';
-          ctx.fillText(i.toString(), px - 2, y - 18);
+          // 半厘米小数字
+          ctx.fillStyle = '#555';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText('5', x, BEAM_TOP + 28);
         }
       }
+      ctx.restore();
+
+      // "cm" 标注
+      ctx.fillStyle = '#666';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('cm', FIXED_INNER + 2, BEAM_TOP + 18);
     }
 
-    function drawJaw(x, y, isMovable) {
-      const jawHeight = 60;
-      const jawWidth = 15;
+    // --- 固定爪 ---
+    function drawFixedJaw() {
+      const jawW = 35;
 
-      // 外量爪
-      ctx.fillStyle = isMovable ? '#a0a0a0' : '#b8860b';
+      // 渐变
+      const grad = ctx.createLinearGradient(FIXED_INNER - jawW, 0, FIXED_INNER, 0);
+      grad.addColorStop(0, '#a07818');
+      grad.addColorStop(1, '#c8a830');
+      ctx.fillStyle = grad;
+
+      // 爪体（矩形，内侧面在右侧）
       ctx.beginPath();
-      ctx.moveTo(x, y - 40);
-      ctx.lineTo(x + (isMovable ? -jawWidth : jawWidth), y - 40);
-      ctx.lineTo(x + (isMovable ? -jawWidth : jawWidth), y + jawHeight);
-      ctx.lineTo(x, y + jawHeight - 5);
+      ctx.moveTo(FIXED_INNER - jawW, BEAM_BOT);
+      ctx.lineTo(FIXED_INNER, BEAM_BOT);
+      ctx.lineTo(FIXED_INNER, JAW_BOTTOM);
+      ctx.lineTo(FIXED_INNER - 8, JAW_BOTTOM);
+      ctx.lineTo(FIXED_INNER - jawW, JAW_BOTTOM - 25);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = '#555';
+      ctx.strokeStyle = '#7a5c00';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // 内测量面（亮色细线）
+      ctx.strokeStyle = '#e8d060';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(FIXED_INNER, BEAM_BOT);
+      ctx.lineTo(FIXED_INNER, JAW_BOTTOM);
       ctx.stroke();
     }
 
-    function drawObject(y, scale) {
+    // --- 游标刻度板 ---
+    function drawVernierPlate(movableInner) {
+      const vernierDivLen = 1 - 1 / precision;   // 游标每格物理长度 (mm)
+      const plateW = precision * vernierDivLen * SCALE;
+      const plateMinW = 80;
+      const actualW = Math.max(plateW, plateMinW);
+
+      const plateLeft = movableInner - 15;
+      const plateTop = BEAM_BOT + 30;
+      const plateH = 40;
+
+      // 游标板本体（银色）
+      const grad = ctx.createLinearGradient(0, plateTop, 0, plateTop + plateH);
+      grad.addColorStop(0, '#d8d8d8');
+      grad.addColorStop(0.5, '#c0c0c0');
+      grad.addColorStop(1, '#a8a8a8');
+      ctx.fillStyle = grad;
+      roundRect(plateLeft, plateTop, actualW + 30, plateH, 3);
+      ctx.fill();
+      ctx.strokeStyle = '#808080';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // 游标刻度线（向上延伸到主尺刻度附近）
+      const mainFrac = caliperPosition - Math.floor(caliperPosition);
+      const vernierLine = Math.round(mainFrac * precision);
+
+      ctx.save();
+      for (let i = 0; i <= precision; i++) {
+        const lineX = movableInner + i * vernierDivLen * SCALE;
+        if (lineX < plateLeft || lineX > plateLeft + actualW + 28) continue;
+
+        const isAligned = (i === vernierLine);
+        const tickUp = isAligned ? 24 : 15;
+
+        ctx.strokeStyle = isAligned ? '#e03030' : '#222';
+        ctx.lineWidth = isAligned ? 2.5 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(lineX, plateTop);
+        ctx.lineTo(lineX, plateTop - tickUp);
+        ctx.stroke();
+
+        // 数字标注
+        if (precision <= 20 || i % 5 === 0) {
+          ctx.fillStyle = isAligned ? '#e03030' : '#222';
+          ctx.font = (isAligned ? 'bold ' : '') + '11px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(i.toString(), lineX, plateTop + 16);
+        }
+      }
+      ctx.restore();
+
+      // 游标零线指示（红色三角）
+      ctx.fillStyle = '#e03030';
+      ctx.beginPath();
+      ctx.moveTo(movableInner, plateTop - 2);
+      ctx.lineTo(movableInner - 4, plateTop - 8);
+      ctx.lineTo(movableInner + 4, plateTop - 8);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // --- 可动爪 ---
+    function drawMovableJaw(movableInner) {
+      const jawW = 35;
+
+      // 渐变
+      const grad = ctx.createLinearGradient(movableInner, 0, movableInner + jawW, 0);
+      grad.addColorStop(0, '#b0b0b0');
+      grad.addColorStop(1, '#909090');
+      ctx.fillStyle = grad;
+
+      // 爪体（内侧面在左侧）
+      ctx.beginPath();
+      ctx.moveTo(movableInner, BEAM_BOT);
+      ctx.lineTo(movableInner + jawW, BEAM_BOT);
+      ctx.lineTo(movableInner + jawW, JAW_BOTTOM - 25);
+      ctx.lineTo(movableInner + jawW - 27, JAW_BOTTOM);
+      ctx.lineTo(movableInner, JAW_BOTTOM);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#606060';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // 内测量面（亮色细线）
+      ctx.strokeStyle = '#d0d0d0';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(movableInner, BEAM_BOT);
+      ctx.lineTo(movableInner, JAW_BOTTOM);
+      ctx.stroke();
+
+      // 滚花纹理（右侧握持区）
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+      ctx.lineWidth = 0.8;
+      for (let y = BEAM_BOT + 15; y < JAW_BOTTOM - 30; y += 7) {
+        ctx.beginPath();
+        ctx.moveTo(movableInner + jawW - 12, y);
+        ctx.lineTo(movableInner + jawW - 2, y + 4);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // --- 被测物体 ---
+    function drawObject(movableInner) {
       if (!currentObject) return;
 
-      const objectX = 20 + 20;
-      const objectWidth = currentObject.size * scale;
-      const objectHeight = 30;
+      const objLeft = FIXED_INNER;
+      const objWidth = movableInner - FIXED_INNER;
+      if (objWidth <= 2) return;
 
-      // 画物体
+      const objH = 70;
+      const objY = (BEAM_BOT + JAW_BOTTOM) / 2 - objH / 2;
+
+      // 物体
       ctx.fillStyle = currentObject.color;
-      ctx.fillRect(objectX, y - 5, objectWidth, objectHeight);
-      ctx.strokeStyle = '#000';
+      ctx.globalAlpha = 0.65;
+      roundRect(objLeft + 2, objY, objWidth - 4, objH, 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
       ctx.lineWidth = 1;
-      ctx.strokeRect(objectX, y - 5, objectWidth, objectHeight);
+      ctx.stroke();
 
       // 标签
       ctx.fillStyle = '#fff';
-      ctx.font = '11px sans-serif';
-      ctx.fillText(currentObject.name, objectX + 5, y + 15);
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(currentObject.name + ' (' + currentObject.size + 'mm)',
+        objLeft + objWidth / 2, objY + objH / 2 + 5);
     }
 
+    // --- 间距标注线 ---
+    function drawGapLine(movableInner) {
+      const gap = movableInner - FIXED_INNER;
+      if (gap < 15) return;
+
+      const y = JAW_BOTTOM + 22;
+
+      // 两端竖线
+      ctx.strokeStyle = 'rgba(255,215,0,0.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(FIXED_INNER, JAW_BOTTOM + 2);
+      ctx.lineTo(FIXED_INNER, y + 5);
+      ctx.moveTo(movableInner, JAW_BOTTOM + 2);
+      ctx.lineTo(movableInner, y + 5);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 横线 + 箭头
+      ctx.strokeStyle = 'rgba(255,215,0,0.7)';
+      ctx.beginPath();
+      ctx.moveTo(FIXED_INNER + 2, y);
+      ctx.lineTo(movableInner - 2, y);
+      ctx.stroke();
+
+      // 左箭头
+      ctx.beginPath();
+      ctx.moveTo(FIXED_INNER, y);
+      ctx.lineTo(FIXED_INNER + 6, y - 3);
+      ctx.moveTo(FIXED_INNER, y);
+      ctx.lineTo(FIXED_INNER + 6, y + 3);
+      ctx.stroke();
+
+      // 右箭头
+      ctx.beginPath();
+      ctx.moveTo(movableInner, y);
+      ctx.lineTo(movableInner - 6, y - 3);
+      ctx.moveTo(movableInner, y);
+      ctx.lineTo(movableInner - 6, y + 3);
+      ctx.stroke();
+
+      // 数值
+      const mmText = (caliperPosition).toFixed(2) + ' mm';
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 13px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(mmText, (FIXED_INNER + movableInner) / 2, y - 7);
+    }
+
+    // ===== 工具函数 =====
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    }
+
+    // ===== 验证答案 =====
     window.verifyAnswer = function() {
       const input = parseFloat(document.getElementById('answer-input').value);
       const correct = parseFloat(document.getElementById('reading-value').textContent);
@@ -559,16 +756,17 @@
         return;
       }
 
+      const decimals = precision === 10 ? 1 : 2;
       if (Math.abs(input - correct) <= tolerance) {
         feedback.className = 'feedback correct';
-        feedback.textContent = `✅ 正确！正确答案是 ${correct.toFixed(precision === 10 ? 1 : 2)} mm`;
+        feedback.textContent = '✅ 正确！读数 ' + correct.toFixed(decimals) + ' mm';
       } else {
         feedback.className = 'feedback wrong';
-        feedback.textContent = `❌ 不对哦，正确答案是 ${correct.toFixed(precision === 10 ? 1 : 2)} mm，再试试？`;
+        feedback.textContent = '❌ 不对哦，正确读数是 ' + correct.toFixed(decimals) + ' mm，再试试？';
       }
     };
 
-    // 启动
+    // ===== 启动 =====
     init();
     window.addEventListener('resize', () => { resizeCanvas(); draw(); });
   </script>
